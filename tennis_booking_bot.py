@@ -110,19 +110,10 @@ def start_message(message):
         return
     bot.send_message(message.chat.id, "🎾 Hello! Send me a screenshot of your booking.")
 
-@bot.message_handler(commands=['bookings'])
-def all_bookings(message):
-    if str(message.chat.id) not in WHITE_LIST:
-        return
-    with sqlite3.connect(DATABASE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT date, time, court FROM bookings WHERE user_id = ?", (str(message.chat.id),))
-        rows = cursor.fetchall()
-        if not rows:
-            bot.send_message(message.chat.id, "📭 No bookings found.")
-            return
-        response = "\n".join([f"📅 {date} {time} - Court {court}" for date, time, court in rows])
-        bot.send_message(message.chat.id, response)
+@bot.message_handler(content_types=['photo'])
+def handle_screenshot(message):
+    print(f"📸 Received photo from {message.chat.id}")  # Debug log
+    bot.send_message(message.chat.id, "📷 Processing your booking screenshot...")
 
 if __name__ == "__main__":
     init_db()
