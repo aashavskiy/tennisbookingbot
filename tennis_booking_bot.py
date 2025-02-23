@@ -28,9 +28,22 @@ def init_db():
                             user_id TEXT,
                             date TEXT,
                             time TEXT,
-                            club TEXT,
                             court TEXT)''')
         conn.commit()
+
+def save_booking(user_id, date, time, court):
+    """Saves the booking details to the database."""
+    try:
+        with sqlite3.connect(DATABASE) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO bookings (user_id, date, time, court) VALUES (?, ?, ?, ?)",
+                (user_id, date, time, court),
+            )
+            conn.commit()
+            print(f"✅ Booking saved: {date} {time}, Court {court}")
+    except Exception as e:
+        print(f"❌ Database error: {e}")
 
 def extract_booking_details(image_bytes):
     """Extracts text from the booking screenshot using OCR with image preprocessing."""
@@ -80,63 +93,19 @@ def parse_booking_text(text):
     
     return {"court": court, "date": date, "time": time}
 
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    update = request.get_json()
-    bot.process_new_updates([telebot.types.Update.de_json(update)])
-    return "", 200
-
-@bot.message_handler(commands=['start'])
-def start_message(message):
-    if str(message.chat.id) not in WHITE_LIST:
-        bot.send_message(message.chat.id, "❌ You do not have access to this bot.")
-        return
-    bot.send_message(message.chat.id, "🎾 Hello! Send me a screenshot of your booking.")
-
 @bot.message_handler(commands=['bookings'])
 def all_bookings(message):
     if str(message.chat.id) not in WHITE_LIST:
         return
     with sqlite3.connect(DATABASE) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT date, time, club, court FROM bookings")
+        cursor.execute("SELECT date, time, court FROM bookings WHERE user_id = ?", (str(message.chat.id),))
         rows = cursor.fetchall()
         if not rows:
             bot.send_message(message.chat.id, "📭 No bookings found.")
             return
-        response = "\n".join([f"📅 {date} {time} - {club} (Court {court})" for date, time, club, court in rows])
+        response = "\n".join([f"📅 {date} {time} - Court {court}" for date, time, court in rows])
         bot.send_message(message.chat.id, response)
-
-@bot.message_handler(content_types=['photo'])
-def handle_screenshot(message):
-    if str(message.chat.id) not in WHITE_LIST:
-        bot.send_message(message.chat.id, "❌ You do not have access to this bot.")
-        return
-    
-    bot.send_message(message.chat.id, "📷 Processing your booking screenshot...")
-
-    try:
-        file_id = message.photo[-1].file_id
-        file_info = bot.get_file(file_id)
-        file = bot.download_file(file_info.file_path)
-        bot.send_message(message.chat.id, "✅ Image received, running OCR...")
-
-        extracted_text = extract_booking_details(file)
-        bot.send_message(message.chat.id, f"🔍 Extracted raw text:\n```{extracted_text}```", parse_mode="Markdown")
-
-        parsed_data = parse_booking_text(extracted_text)
-        bot.send_message(message.chat.id, "📊 Parsed data extracted, sending results...")
-
-        response = (
-            f"📅 **Date:** {parsed_data['date']}\n"
-            f"⏰ **Time:** {parsed_data['time']}\n"
-            f"🏟 **Court:** {parsed_data['court']}"
-        )
-
-        bot.send_message(message.chat.id, response, parse_mode="Markdown")
-    except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Error processing image: {e}")
-        print(f"Error in handle_screenshot: {e}")
 
 if __name__ == "__main__":
     init_db()
