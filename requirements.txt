@@ -2,3 +2,5 @@ flask
 telebot
 python-dotenv
 gunicorn
+pytesseract
+Pillow
