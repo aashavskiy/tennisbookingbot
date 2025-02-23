@@ -97,8 +97,18 @@ def parse_booking_text(text):
 def webhook():
     """Handles incoming updates from Telegram."""
     update = request.get_json()
+    print(f"📩 Incoming update: {update}")  # Debug log
     bot.process_new_updates([telebot.types.Update.de_json(update)])
+    print("✅ Update processed")
     return "", 200
+
+@bot.message_handler(commands=['start'])
+def start_message(message):
+    print(f"✅ Received /start from {message.chat.id}")  # Debug log
+    if str(message.chat.id) not in WHITE_LIST:
+        bot.send_message(message.chat.id, "❌ You do not have access to this bot.")
+        return
+    bot.send_message(message.chat.id, "🎾 Hello! Send me a screenshot of your booking.")
 
 @bot.message_handler(commands=['bookings'])
 def all_bookings(message):
