@@ -51,9 +51,15 @@ def extract_booking_details(image_bytes):
 def parse_booking_text(text):
     """Extracts court number, date, and time from the OCR text."""
     
-    # Extract court number (usually a number at the beginning)
-    court_match = re.search(r"\b\d{1,2}\b", text)
-    court = court_match.group(0) if court_match else "Unknown"
+    # Extract all numbers in text
+    numbers = re.findall(r"\b\d{1,2}\b", text)
+    
+    # Try to find a reasonable court number (between 1 and 50)
+    court = "Unknown"
+    for num in numbers:
+        if 1 <= int(num) <= 50:  # Valid court range
+            court = num
+            break
 
     # Extract date (DD/MM/YYYY format)
     date_match = re.search(r"\b\d{2}/\d{2}/\d{4}\b", text)
@@ -107,7 +113,9 @@ def handle_screenshot(message):
         bot.send_message(message.chat.id, "✅ Image received, running OCR...")
 
         extracted_text = extract_booking_details(file)
-        bot.send_message(message.chat.id, f"🔍 Extracted raw text:\n```\n{extracted_text}\n```", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"🔍 Extracted raw text:\n```
+{extracted_text}
+```", parse_mode="Markdown")
 
         parsed_data = parse_booking_text(extracted_text)
         bot.send_message(message.chat.id, "📊 Parsed data extracted, sending results...")
@@ -127,8 +135,6 @@ if __name__ == "__main__":
     init_db()
     bot.remove_webhook()
     bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
-
     port = int(os.environ.get("PORT", 8080))
     print(f"✅ Starting Flask server on port {port}...")
-    
     app.run(host="0.0.0.0", port=port, debug=True)
