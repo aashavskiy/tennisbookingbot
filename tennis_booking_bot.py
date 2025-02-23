@@ -113,9 +113,7 @@ def handle_screenshot(message):
         bot.send_message(message.chat.id, "✅ Image received, running OCR...")
 
         extracted_text = extract_booking_details(file)
-        bot.send_message(message.chat.id, f"🔍 Extracted raw text:\n```
-{extracted_text}
-```", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"🔍 Extracted raw text:\n```{extracted_text}```", parse_mode="Markdown")
 
         parsed_data = parse_booking_text(extracted_text)
         bot.send_message(message.chat.id, "📊 Parsed data extracted, sending results...")
@@ -123,7 +121,7 @@ def handle_screenshot(message):
         response = (
             f"📅 **Date:** {parsed_data['date']}\n"
             f"⏰ **Time:** {parsed_data['time']}\n"
-            f"🏟 **Court:** {parsed_data['court']}\n"
+            f"🏟 **Court:** {parsed_data['court']}"
         )
 
         bot.send_message(message.chat.id, response, parse_mode="Markdown")
@@ -138,4 +136,3 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     print(f"✅ Starting Flask server on port {port}...")
     app.run(host="0.0.0.0", port=port, debug=True)
-
