@@ -31,17 +31,21 @@ def init_db():
 
 def extract_booking_details(image_bytes):
     """Extracts date, time, club name, and court number from the booking screenshot."""
-    image = Image.open(io.BytesIO(image_bytes))
-    
-    # Convert image to grayscale (improves OCR accuracy)
-    image = image.convert("L")
-    
-    # Extract text using Tesseract
-    extracted_text = pytesseract.image_to_string(image)
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+        image = image.convert("L")  # Convert image to grayscale for better OCR
+        
+        # Save image for debugging
+        image.save("debug_image.png")
 
-    print("Extracted text:", extracted_text)  # Debugging
+        extracted_text = pytesseract.image_to_string(image)
 
-    return extracted_text  # Temporary return full text
+        print("Extracted text:", extracted_text)  # Log output
+
+        return extracted_text if extracted_text.strip() else "No text recognized."
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        return f"Error: {e}"
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
@@ -76,15 +80,20 @@ def handle_screenshot(message):
         bot.send_message(message.chat.id, "❌ You do not have access to this bot.")
         return
     
-    # Get highest resolution image
-    file_id = message.photo[-1].file_id
-    file_info = bot.get_file(file_id)
-    file = bot.download_file(file_info.file_path)
+    bot.send_message(message.chat.id, "📷 Processing your booking screenshot...")
 
-    # Process image with OCR
-    extracted_text = extract_booking_details(file)
+    try:
+        file_id = message.photo[-1].file_id
+        file_info = bot.get_file(file_id)
+        file = bot.download_file(file_info.file_path)
 
-    bot.send_message(message.chat.id, f"📄 Extracted text:\n\n{extracted_text}")
+        extracted_text = extract_booking_details(file)
+
+        bot.send_message(message.chat.id, f"📄 Extracted text:\n```
+{extracted_text}
+```", parse_mode="Markdown")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Error processing image: {e}")
 
 if __name__ == "__main__":
     init_db()
