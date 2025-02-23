@@ -5,19 +5,16 @@ import pytesseract
 import re
 import cv2
 import numpy as np
-from flask import Flask, request
 import telebot
 from PIL import Image
 import io
 
 # Configuration
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 WHITE_LIST = set(os.getenv("WHITE_LIST", "").split(","))  # Allowed users' IDs
 DATABASE = "bookings.db"
 
 bot = telebot.TeleBot(TOKEN)
-app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
 def init_db():
@@ -93,15 +90,6 @@ def parse_booking_text(text):
     
     return {"court": court, "date": date, "time": time}
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    """Handles incoming updates from Telegram."""
-    update = request.get_json()
-    print(f"📩 Incoming update: {update}")  # Debug log
-    bot.process_new_updates([telebot.types.Update.de_json(update)])
-    print("✅ Update processed")
-    return "", 200
-
 @bot.message_handler(commands=['start'])
 def start_message(message):
     print(f"✅ Received /start from {message.chat.id}")  # Debug log
@@ -117,12 +105,5 @@ def handle_screenshot(message):
 
 if __name__ == "__main__":
     init_db()
-    bot.remove_webhook()
-    if WEBHOOK_URL:
-        bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
-        print(f"✅ Webhook set to {WEBHOOK_URL}/webhook")
-    else:
-        print("❌ ERROR: WEBHOOK_URL is not set!")
-    port = int(os.environ.get("PORT", 8080))
-    print(f"✅ Starting Flask server on port {port}...")
-    app.run(host="0.0.0.0", port=port, debug=True)
+    print("✅ Starting bot with polling mode...")
+    bot.infinity_polling()
