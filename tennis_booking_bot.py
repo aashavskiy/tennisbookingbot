@@ -3,6 +3,8 @@ import sqlite3
 import logging
 from flask import Flask, request
 import telebot
+from dotenv import load_dotenv
+load_dotenv()
 
 # Configuration
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -57,4 +59,5 @@ if __name__ == "__main__":
     init_db()
     bot.remove_webhook()
     bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+    import os
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
