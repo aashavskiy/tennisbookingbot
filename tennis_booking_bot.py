@@ -3,6 +3,8 @@ import sqlite3
 import logging
 import pytesseract
 import re
+import cv2
+import numpy as np
 from flask import Flask, request
 import telebot
 from PIL import Image
@@ -31,16 +33,20 @@ def init_db():
         conn.commit()
 
 def extract_booking_details(image_bytes):
-    """Extracts text from the booking screenshot using OCR with English only."""
+    """Extracts text from the booking screenshot using OCR with image preprocessing."""
     try:
         image = Image.open(io.BytesIO(image_bytes))
         image = image.convert("L")  # Convert image to grayscale for better OCR
-        
-        # Save image for debugging
-        image.save("debug_image.png")
 
-        # Run OCR with English support only
-        extracted_text = pytesseract.image_to_string(image, lang="eng")
+        # Convert PIL image to OpenCV format
+        image_cv = np.array(image)
+        image_cv = cv2.adaptiveThreshold(image_cv, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 2)
+
+        # Convert back to PIL for Tesseract
+        processed_image = Image.fromarray(image_cv)
+
+        # Run OCR
+        extracted_text = pytesseract.image_to_string(processed_image, lang="eng")
 
         print("Extracted text:", extracted_text)  # Log output
 
@@ -50,7 +56,7 @@ def extract_booking_details(image_bytes):
         return f"Error: {e}"
 
 def parse_booking_text(text):
-    """Extracts court number, date, and time from the OCR text, supporting English."""
+    """Extracts court number, date, and time from the OCR text."""
     
     # Extract date (DD/MM/YYYY format)
     date_match = re.search(r"\b\d{2}/\d{2}/\d{4}\b", text)
@@ -60,9 +66,9 @@ def parse_booking_text(text):
     time_match = re.search(r"\b\d{2}:\d{2}-\d{2}:\d{2}\b", text)
     time = time_match.group(0) if time_match else "Unknown"
 
-    # Extract court number (supports only English text patterns)
+    # Extract court number near "Court" or "moan" (in case of OCR mistakes)
     court = "Unknown"
-    court_match = re.search(r"(?:court|moan|field|court number|court no\.?)\s*[:\s]*(\d{1,2})", text, re.IGNORECASE)
+    court_match = re.search(r"(?:Court|moan|field|court number|court no\.?)\s*[:\s]*(\d{1,2})", text, re.IGNORECASE)
     if court_match:
         court = court_match.group(1)
 
