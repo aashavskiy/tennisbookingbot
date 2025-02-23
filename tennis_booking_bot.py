@@ -2,6 +2,7 @@ import os
 import sqlite3
 import logging
 import pytesseract
+import re
 from flask import Flask, request
 import telebot
 from PIL import Image
@@ -30,7 +31,7 @@ def init_db():
         conn.commit()
 
 def extract_booking_details(image_bytes):
-    """Extracts date, time, club name, and court number from the booking screenshot."""
+    """Extracts text from the booking screenshot using OCR."""
     try:
         image = Image.open(io.BytesIO(image_bytes))
         image = image.convert("L")  # Convert image to grayscale for better OCR
@@ -46,6 +47,23 @@ def extract_booking_details(image_bytes):
     except Exception as e:
         print(f"Error processing image: {e}")
         return f"Error: {e}"
+
+def parse_booking_text(text):
+    """Extracts court number, date, and time from the OCR text."""
+    
+    # Extract court number (usually a number at the beginning)
+    court_match = re.search(r"\b\d{1,2}\b", text)
+    court = court_match.group(0) if court_match else "Unknown"
+
+    # Extract date (DD/MM/YYYY format)
+    date_match = re.search(r"\b\d{2}/\d{2}/\d{4}\b", text)
+    date = date_match.group(0) if date_match else "Unknown"
+
+    # Extract time (HH:MM-HH:MM format)
+    time_match = re.search(r"\b\d{2}:\d{2}-\d{2}:\d{2}\b", text)
+    time = time_match.group(0) if time_match else "Unknown"
+
+    return {"court": court, "date": date, "time": time}
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
@@ -88,10 +106,15 @@ def handle_screenshot(message):
         file = bot.download_file(file_info.file_path)
 
         extracted_text = extract_booking_details(file)
+        parsed_data = parse_booking_text(extracted_text)
 
-        bot.send_message(message.chat.id, f"📄 Extracted text:\n```
-{extracted_text}
-```", parse_mode="Markdown")
+        response = (
+            f"📅 **Date:** {parsed_data['date']}\n"
+            f"⏰ **Time:** {parsed_data['time']}\n"
+            f"🏟 **Court:** {parsed_data['court']}\n"
+        )
+
+        bot.send_message(message.chat.id, response, parse_mode="Markdown")
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Error processing image: {e}")
 
