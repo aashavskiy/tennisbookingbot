@@ -56,22 +56,28 @@ def extract_booking_details(image_bytes):
         return f"Error: {e}"
 
 def parse_booking_text(text):
-    """Extracts court number, date, and time from the OCR text."""
+    """Extracts court number, date, and time from the OCR text using line-based logic."""
     
-    # Extract date (DD/MM/YYYY format)
-    date_match = re.search(r"\b\d{2}/\d{2}/\d{4}\b", text)
-    date = date_match.group(0) if date_match else "Unknown"
+    # Split text into lines
+    lines = text.split("\n")
+    
+    date, time, court = "Unknown", "Unknown", "Unknown"
+    
+    for i, line in enumerate(lines):
+        # Find date (DD/MM/YYYY)
+        if re.search(r"\b\d{2}/\d{2}/\d{4}\b", line):
+            date = re.search(r"\b\d{2}/\d{2}/\d{4}\b", line).group(0)
+            
+            # The number before the date in the previous line is likely the court number
+            if i > 0:
+                possible_court = re.findall(r"\b\d{1,2}\b", lines[i - 1])
+                if possible_court:
+                    court = possible_court[-1]  # Take the last number before the date
 
-    # Extract time (HH:MM-HH:MM format)
-    time_match = re.search(r"\b\d{2}:\d{2}-\d{2}:\d{2}\b", text)
-    time = time_match.group(0) if time_match else "Unknown"
-
-    # Extract court number near "Court" or "moan" (in case of OCR mistakes)
-    court = "Unknown"
-    court_match = re.search(r"(?:Court|moan|field|court number|court no\.?)\s*[:\s]*(\d{1,2})", text, re.IGNORECASE)
-    if court_match:
-        court = court_match.group(1)
-
+        # Find time (HH:MM-HH:MM)
+        if re.search(r"\b\d{2}:\d{2}-\d{2}:\d{2}\b", line):
+            time = re.search(r"\b\d{2}:\d{2}-\d{2}:\d{2}\b", line).group(0)
+    
     return {"court": court, "date": date, "time": time}
 
 @app.route(f"/{TOKEN}", methods=["POST"])
