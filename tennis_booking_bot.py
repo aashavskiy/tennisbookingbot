@@ -50,17 +50,8 @@ def extract_booking_details(image_bytes):
         return f"Error: {e}"
 
 def parse_booking_text(text):
-    """Extracts court number, date, and time from the OCR text."""
+    """Extracts court number, date, and time from the OCR text, supporting Hebrew."""
     
-    # Extract all numbers in text
-    numbers = re.findall(r"\b\d{1,2}\b", text)
-    
-    # Try to find a reasonable court number (between 1 and 50)
-    court = "Unknown"
-    court_match = re.search(r"(?:court|moan|field|court number|court no\.?)\s*(\d{1,2})", text, re.IGNORECASE)
-    if court_match:
-        court = court_match.group(1)
-
     # Extract date (DD/MM/YYYY format)
     date_match = re.search(r"\b\d{2}/\d{2}/\d{4}\b", text)
     date = date_match.group(0) if date_match else "Unknown"
@@ -68,6 +59,12 @@ def parse_booking_text(text):
     # Extract time (HH:MM-HH:MM format)
     time_match = re.search(r"\b\d{2}:\d{2}-\d{2}:\d{2}\b", text)
     time = time_match.group(0) if time_match else "Unknown"
+
+    # Extract court number (supports both English and Hebrew)
+    court = "Unknown"
+    court_match = re.search(r"(?:מגרש|court|moan|field|court number|court no\.?)\s*[:\s]*(\d{1,2})", text, re.IGNORECASE)
+    if court_match:
+        court = court_match.group(1)
 
     return {"court": court, "date": date, "time": time}
 
