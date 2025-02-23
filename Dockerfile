@@ -19,5 +19,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Expose port for Cloud Run
 EXPOSE 8080
 
-# Run the application
-CMD ["python", "tennis_booking_bot.py"]
+# Command to run the bot and Flask server
+CMD exec python tennis_booking_bot.py
