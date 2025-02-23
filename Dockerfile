@@ -16,8 +16,8 @@ COPY . .
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose port for Cloud Run
+# Expose the port for Cloud Run
 EXPOSE 8080
 
-# Command to run the bot and Flask server
+# Command to start Flask server
 CMD exec python tennis_booking_bot.py
