@@ -107,9 +107,7 @@ def handle_screenshot(message):
         bot.send_message(message.chat.id, "✅ Image received, running OCR...")
 
         extracted_text = extract_booking_details(file)
-        bot.send_message(message.chat.id, f"🔍 Extracted raw text:\n```
-{extracted_text}
-```", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"🔍 Extracted raw text:\n```\n{extracted_text}\n```", parse_mode="Markdown")
 
         parsed_data = parse_booking_text(extracted_text)
         bot.send_message(message.chat.id, "📊 Parsed data extracted, sending results...")
@@ -129,6 +127,8 @@ if __name__ == "__main__":
     init_db()
     bot.remove_webhook()
     bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+
     port = int(os.environ.get("PORT", 8080))
     print(f"✅ Starting Flask server on port {port}...")
+    
     app.run(host="0.0.0.0", port=port, debug=True)
