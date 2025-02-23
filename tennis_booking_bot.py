@@ -104,9 +104,15 @@ def handle_screenshot(message):
         file_id = message.photo[-1].file_id
         file_info = bot.get_file(file_id)
         file = bot.download_file(file_info.file_path)
+        bot.send_message(message.chat.id, "✅ Image received, running OCR...")
 
         extracted_text = extract_booking_details(file)
+        bot.send_message(message.chat.id, f"🔍 Extracted raw text:\n```
+{extracted_text}
+```", parse_mode="Markdown")
+
         parsed_data = parse_booking_text(extracted_text)
+        bot.send_message(message.chat.id, "📊 Parsed data extracted, sending results...")
 
         response = (
             f"📅 **Date:** {parsed_data['date']}\n"
@@ -117,6 +123,7 @@ def handle_screenshot(message):
         bot.send_message(message.chat.id, response, parse_mode="Markdown")
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Error processing image: {e}")
+        print(f"Error in handle_screenshot: {e}")
 
 if __name__ == "__main__":
     init_db()
