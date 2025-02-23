@@ -118,7 +118,11 @@ def handle_screenshot(message):
 if __name__ == "__main__":
     init_db()
     bot.remove_webhook()
-    bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+    if WEBHOOK_URL:
+        bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+        print(f"✅ Webhook set to {WEBHOOK_URL}/webhook")
+    else:
+        print("❌ ERROR: WEBHOOK_URL is not set!")
     port = int(os.environ.get("PORT", 8080))
     print(f"✅ Starting Flask server on port {port}...")
     app.run(host="0.0.0.0", port=port, debug=True)
