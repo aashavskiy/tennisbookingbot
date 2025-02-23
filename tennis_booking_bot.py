@@ -129,8 +129,6 @@ if __name__ == "__main__":
     init_db()
     bot.remove_webhook()
     bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
-
     port = int(os.environ.get("PORT", 8080))
     print(f"✅ Starting Flask server on port {port}...")
-    
     app.run(host="0.0.0.0", port=port, debug=True)
