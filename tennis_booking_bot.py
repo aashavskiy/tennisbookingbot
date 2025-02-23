@@ -93,6 +93,13 @@ def parse_booking_text(text):
     
     return {"court": court, "date": date, "time": time}
 
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    """Handles incoming updates from Telegram."""
+    update = request.get_json()
+    bot.process_new_updates([telebot.types.Update.de_json(update)])
+    return "", 200
+
 @bot.message_handler(commands=['bookings'])
 def all_bookings(message):
     if str(message.chat.id) not in WHITE_LIST:
@@ -110,7 +117,7 @@ def all_bookings(message):
 if __name__ == "__main__":
     init_db()
     bot.remove_webhook()
-    bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+    bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
     port = int(os.environ.get("PORT", 8080))
     print(f"✅ Starting Flask server on port {port}...")
     app.run(host="0.0.0.0", port=port, debug=True)
