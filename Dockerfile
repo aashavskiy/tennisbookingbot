@@ -1,10 +1,9 @@
 # Use official Python image
 FROM python:3.11
 
-# Install Tesseract and language data
+# Install Tesseract and Hebrew language support
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
-    tesseract-ocr-rus \
     tesseract-ocr-heb \
     libtesseract-dev \
     && rm -rf /var/lib/apt/lists/*
