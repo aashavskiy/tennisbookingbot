@@ -1,9 +1,11 @@
 # Use official Python image
 FROM python:3.11
 
-# Install system dependencies
+# Install Tesseract and language data
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
+    tesseract-ocr-rus \
+    tesseract-ocr-heb \
     libtesseract-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -19,5 +21,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Expose the port for Cloud Run
 EXPOSE 8080
 
-# Command to start Flask server
+# Run the bot
 CMD exec python tennis_booking_bot.py
