@@ -31,7 +31,7 @@ def init_db():
         conn.commit()
 
 def extract_booking_details(image_bytes):
-    """Extracts text from the booking screenshot using OCR."""
+    """Extracts text from the booking screenshot using OCR with Hebrew support."""
     try:
         image = Image.open(io.BytesIO(image_bytes))
         image = image.convert("L")  # Convert image to grayscale for better OCR
@@ -39,7 +39,8 @@ def extract_booking_details(image_bytes):
         # Save image for debugging
         image.save("debug_image.png")
 
-        extracted_text = pytesseract.image_to_string(image)
+        # Run OCR with Hebrew and English support
+        extracted_text = pytesseract.image_to_string(image, lang="heb+eng")
 
         print("Extracted text:", extracted_text)  # Log output
 
@@ -56,10 +57,9 @@ def parse_booking_text(text):
     
     # Try to find a reasonable court number (between 1 and 50)
     court = "Unknown"
-    for num in numbers:
-        if 1 <= int(num) <= 50:  # Valid court range
-            court = num
-            break
+    court_match = re.search(r"(?:court|moan|field|court number|court no\.?)\s*(\d{1,2})", text, re.IGNORECASE)
+    if court_match:
+        court = court_match.group(1)
 
     # Extract date (DD/MM/YYYY format)
     date_match = re.search(r"\b\d{2}/\d{2}/\d{4}\b", text)
