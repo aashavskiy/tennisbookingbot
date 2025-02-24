@@ -18,15 +18,24 @@ from db import (
 )
 from sqlalchemy import text
 
-# Initialize bot
-bot = telebot.TeleBot(TOKEN)
+# Initialize bot with specific configurations to prevent duplicate processing
+bot = telebot.TeleBot(TOKEN, threaded=True, skip_pending=True)
 
 # Storage for booking details
 user_bookings = {}
 
+# Track processed message IDs to prevent duplicate handling
+processed_messages = set()
+MAX_PROCESSED_MESSAGES = 1000  # Limit to prevent memory growth
+
 @bot.message_handler(commands=['admin'])
 def check_admin(message):
     """Checks and displays admin status of the requesting user"""
+    # Check if message already processed
+    if message.message_id in processed_messages:
+        return
+    processed_messages.add(message.message_id)
+    
     user_id = str(message.from_user.id)
     username = message.from_user.username
     
@@ -34,10 +43,20 @@ def check_admin(message):
         bot.reply_to(message, f"✅ User @{username} (ID: {user_id}) is an administrator.")
     else:
         bot.reply_to(message, f"❌ User @{username} (ID: {user_id}) is not an administrator.")
+    
+    # Limit the size of processed_messages set
+    if len(processed_messages) > MAX_PROCESSED_MESSAGES:
+        # Remove the oldest half of the messages
+        processed_messages.clear()
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     """Handles the /start command and user registration"""
+    # Check if message already processed
+    if message.message_id in processed_messages:
+        return
+    processed_messages.add(message.message_id)
+    
     user_id = str(message.from_user.id)
     username = message.from_user.username
     
@@ -106,6 +125,11 @@ def handle_approval(call):
 @bot.message_handler(commands=['users'])
 def list_users(message):
     """Lists all registered users (admin only)"""
+    # Check if message already processed
+    if message.message_id in processed_messages:
+        return
+    processed_messages.add(message.message_id)
+    
     if not is_user_admin(str(message.chat.id)):
         bot.send_message(message.chat.id, "❌ You do not have permission to view users.")
         return
@@ -124,6 +148,11 @@ def list_users(message):
 @bot.message_handler(commands=['dbstatus'])
 def db_status(message):
     """Checks and displays database connection status (admin only)"""
+    # Check if message already processed
+    if message.message_id in processed_messages:
+        return
+    processed_messages.add(message.message_id)
+    
     if not is_user_admin(str(message.chat.id)):
         bot.send_message(message.chat.id, "❌ You do not have permission to check database status.")
         return
@@ -142,6 +171,11 @@ def db_status(message):
 @bot.message_handler(commands=['bookings'])
 def list_bookings(message):
     """Displays all bookings for the current user"""
+    # Check if message already processed
+    if message.message_id in processed_messages:
+        return
+    processed_messages.add(message.message_id)
+    
     if not is_user_approved(str(message.from_user.id)):
         bot.reply_to(message, "⏳ Please wait for administrator approval before using the bot.")
         return
@@ -164,6 +198,11 @@ def list_bookings(message):
 @bot.message_handler(commands=['manual'])
 def manual_booking(message):
     """Provides instructions for manual booking entry"""
+    # Check if message already processed
+    if message.message_id in processed_messages:
+        return
+    processed_messages.add(message.message_id)
+    
     if not is_user_approved(str(message.from_user.id)):
         bot.reply_to(message, "⏳ Please wait for administrator approval before using the bot.")
         return
@@ -179,6 +218,11 @@ def manual_booking(message):
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     """Handles received photos with button-based booking entry"""
+    # Check if message already processed
+    if message.message_id in processed_messages:
+        return
+    processed_messages.add(message.message_id)
+    
     user_id = str(message.from_user.id)
     
     # Check user approval
@@ -307,6 +351,11 @@ def save_booking_callback(call):
                     'court:' in message.text.lower())
 def handle_manual_entry(message):
     """Processes manual booking entries"""
+    # Check if message already processed
+    if message.message_id in processed_messages:
+        return
+    processed_messages.add(message.message_id)
+    
     user_id = str(message.from_user.id)
     
     if not is_user_approved(user_id):
@@ -354,9 +403,15 @@ def handle_manual_entry(message):
         logger.error(f"Error in manual entry: {str(e)}")
         bot.reply_to(message, "❌ Error processing your entry. Please check the format and try again.")
 
+# The default handler should be the last registered handler
 @bot.message_handler(func=lambda message: True)
 def check_access(message):
     """Default handler that checks user approval status"""
+    # Check if message already processed
+    if message.message_id in processed_messages:
+        return
+    processed_messages.add(message.message_id)
+    
     if not is_user_approved(str(message.from_user.id)):
         bot.reply_to(message, "⏳ Please wait for administrator approval before using the bot.")
         return
