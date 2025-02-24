@@ -1,0 +1,262 @@
+2025-02-24 13:20:43,736 - __main__ - INFO - ✅ Starting bot with polling mode...
+2025-02-24 13:20:51,730 - __main__ - INFO - Received photo with file_id: AgACAgIAAxkBAAOzZ7t_XF5Hvi5LoDPujyFm6f1iHkQAArfnMRv2guBJmg2eCvQGGEwBAAMCAAN5AAM2BA
+2025-02-24 13:20:52,578 - __main__ - INFO - Extracted text from image: 9:28 8%
+
+ore own wiananina  Tyin nana
+
+<Any¥NA AYA wrann nant
+
+nynATAN 'V1VD
+
+jnwa nn 71
+14 mwaan
+09/03/2025 ryan
+19:00-20:00 mye
+
+8 ATA Nw NR qnw? arnnn ova Tn
+“pw 2wa nw oMonn wian? ANN UX
+ATR NTN TWA NAPA Tw nwa? we — AUN
+wan? anyyn ey anwi won
+
+
+2025-02-24 13:20:52,680 - __main__ - INFO - Successfully processed image and extracted text
+2025-02-24 13:59:05,239 - TeleBot - ERROR - Infinity polling: polling exited
+2025-02-24 13:59:05,240 - TeleBot - ERROR - Break infinity polling
+2025-02-24 14:01:21,115 - __main__ - INFO - ✅ Starting bot with polling mode...
+2025-02-24 14:01:38,040 - __main__ - INFO - Received photo with file_id: AgACAgIAAxkBAAOzZ7t_XF5Hvi5LoDPujyFm6f1iHkQAArfnMRv2guBJmg2eCvQGGEwBAAMCAAN5AAM2BA
+2025-02-24 14:01:38,539 - __main__ - ERROR - Error processing image: (1, 'Error opening data file /opt/homebrew/share/tessdata/heb.traineddata Please make sure the TESSDATA_PREFIX environment variable is set to your "tessdata" directory. Failed loading language \'heb\' Tesseract couldn\'t load any languages! Could not initialize tesseract.')
+2025-02-24 14:01:38,646 - __main__ - WARNING - No text could be extracted from the image
+2025-02-24 14:02:35,762 - TeleBot - ERROR - Infinity polling: polling exited
+2025-02-24 14:02:35,764 - TeleBot - ERROR - Break infinity polling
+2025-02-24 15:22:29,124 - __main__ - INFO - ✅ Starting bot with polling mode...
+2025-02-24 15:22:38,031 - __main__ - INFO - Received photo with file_id: AgACAgIAAxkBAAOzZ7t_XF5Hvi5LoDPujyFm6f1iHkQAArfnMRv2guBJmg2eCvQGGEwBAAMCAAN5AAM2BA
+2025-02-24 15:22:38,647 - __main__ - INFO - Extracted text from image: 000
+
+'מהכז!הטניס מתח בילשמוהואת שעת ההזמנו
+
+
+2025-02-24 15:22:38,648 - __main__ - INFO - Attempting to extract booking info from text: 000
+
+'מהכז!הטניס מתח בילשמוהואת שעת ההזמנו
+
+
+2025-02-24 15:22:38,648 - __main__ - INFO - Found dates: []
+2025-02-24 15:22:38,648 - __main__ - INFO - Found times: []
+2025-02-24 15:22:38,648 - __main__ - INFO - Found courts: []
+2025-02-24 15:22:38,775 - __main__ - INFO - Extracted booking info - Date: None, Time: None, Court: None
+2025-02-24 15:25:53,307 - TeleBot - ERROR - Infinity polling: polling exited
+2025-02-24 15:25:53,307 - TeleBot - ERROR - Break infinity polling
+2025-02-24 15:25:54,676 - __main__ - INFO - ✅ starting bot with polling mode...
+2025-02-24 15:26:02,548 - __main__ - INFO - received photo with file_id: AgACAgIAAxkBAAOzZ7t_XF5Hvi5LoDPujyFm6f1iHkQAArfnMRv2guBJmg2eCvQGGEwBAAMCAAN5AAM2BA
+2025-02-24 15:26:03,074 - __main__ - INFO - extracted text from image: 000
+
+'מהכז!הטניס מתח בילשמוהואת שעת ההזמנו
+
+
+2025-02-24 15:26:03,075 - __main__ - INFO - Attempting to extract booking info from text: 000
+
+'מהכז!הטניס מתח בילשמוהואת שעת ההזמנו
+
+
+2025-02-24 15:26:03,075 - __main__ - INFO - Found dates: []
+2025-02-24 15:26:03,075 - __main__ - INFO - Found times: []
+2025-02-24 15:26:03,075 - __main__ - INFO - Found courts: []
+2025-02-24 15:26:03,215 - __main__ - INFO - extracted booking info - date: None, time: None, court: None
+2025-02-24 15:27:35,226 - TeleBot - ERROR - Infinity polling: polling exited
+2025-02-24 15:27:35,226 - TeleBot - ERROR - Break infinity polling
+2025-02-24 15:27:36,035 - __main__ - INFO - ✅ starting bot with polling mode...
+2025-02-24 15:27:47,723 - __main__ - INFO - received photo with file_id: AgACAgIAAxkBAAOzZ7t_XF5Hvi5LoDPujyFm6f1iHkQAArfnMRv2guBJmg2eCvQGGEwBAAMCAAN5AAM2BA
+2025-02-24 15:27:49,059 - __main__ - INFO - extracted text from image: 9:28 8
+
+בחירת מועד | בחירת מגרש תשלום סיום
+
+הזמנת המגרש בוצעה בהצלחה.
+
+פרטי ההזמנה
+
+מרכז: רמת השרון
+מגרש: 14
+
+תאריך: 255(
+שעות: 0
+
+מרכז הטניס מתחייב לשמור את שעת ההזמנה, אך
+אינו מתחייב למגרש המסויים שנבחר, בשל שיקולי
+תאורה - יש לגשת למשרד הקבלה בכדי לוודא איזה
+מגרש נשמר לפני העלייה למגרש
+
+ 000
+
+'מהכז!הטניס מתח בילשמוהואת שעת ההזמנו
+
+ בחירת מועד בחירת מגרש תשלום סיום
+
+"." .ה" .ה" .מז"
+
+הזמנת המגרש בוצעה בהצלחה.
+
+פרטי ההזמנה
+
+מרכז: רמת השרון
+מגרש: 14
+
+תאריך: 255"(
+שעות: 0
+
+מרכז הטניס מתחייב לשמור את שעת ההזמנה, אך
+אינו מתחייב למגרש המסויים שנבחר, בשל שיקולי
+תאורה - יש לגשת למשרד הקבלה בכדי לוודא איזה
+מגרש נשמר לפני העלייה למגרש
+
+ בחות מגרשט ולו
+
+הזמנת המגרש בוצעה בהצלחה
+
+פרטי ההזמנה
+
+מרכזן ימת שיו
+מגרש: בו
+תאריך: ו
+
+שעות:
+
+1
+
+סיו
+
+ 9:28%8
+
+בחירת מועד | בחירת מגרש תשלום סיום
+
+הזמנח המגרש בוצעה בהצלחר
+
+פרטי ההזמנה
+
+מרכז: רמת השרון
+מגרש: 14
+תאריך: 025(
+
+שעות: 0
+
+ 119:00-20;00'
+
+tan ny nxn sy nnn ovonirsan:
+
+ 9:28
+
+oro own wunnina Twin mna
+
+-AN?YAA AYYA Wann Nanta
+
+nnTNN '019
+
+jnwa nn 721
+14 moan
+09/03/2025 syn
+19:00-20:00 niyw
+
+DX ,AINTAN NYW NX qinv? a"nnn o0n TI71n
+"ew WA ANY OMONA wWaan? Ann 11'X
+ATR NTN? TIA NAPA Twn? nwa? wi — AIINN
+wan? aan 97 Anwi wan
+
+
+2025-02-24 15:27:49,060 - __main__ - INFO - attempting to extract booking info from text: 9:28 8
+
+בחירת מועד | בחירת מגרש תשלום סיום
+
+הזמנת המגרש בוצעה בהצלחה.
+
+פרטי ההזמנה
+
+מרכז: רמת השרון
+מגרש: 14
+
+תאריך: 255(
+שעות: 0
+
+מרכז הטניס מתחייב לשמור את שעת ההזמנה, אך
+אינו מתחייב למגרש המסויים שנבחר, בשל שיקולי
+תאורה - יש לגשת למשרד הקבלה בכדי לוודא איזה
+מגרש נשמר לפני העלייה למגרש
+
+ 000
+
+'מהכז!הטניס מתח בילשמוהואת שעת ההזמנו
+
+ בחירת מועד בחירת מגרש תשלום סיום
+
+"." .ה" .ה" .מז"
+
+הזמנת המגרש בוצעה בהצלחה.
+
+פרטי ההזמנה
+
+מרכז: רמת השרון
+מגרש: 14
+
+תאריך: 255"(
+שעות: 0
+
+מרכז הטניס מתחייב לשמור את שעת ההזמנה, אך
+אינו מתחייב למגרש המסויים שנבחר, בשל שיקולי
+תאורה - יש לגשת למשרד הקבלה בכדי לוודא איזה
+מגרש נשמר לפני העלייה למגרש
+
+ בחות מגרשט ולו
+
+הזמנת המגרש בוצעה בהצלחה
+
+פרטי ההזמנה
+
+מרכזן ימת שיו
+מגרש: בו
+תאריך: ו
+
+שעות:
+
+1
+
+סיו
+
+ 9:28%8
+
+בחירת מועד | בחירת מגרש תשלום סיום
+
+הזמנח המגרש בוצעה בהצלחר
+
+פרטי ההזמנה
+
+מרכז: רמת השרון
+מגרש: 14
+תאריך: 025(
+
+שעות: 0
+
+ 119:00-20;00'
+
+tan ny nxn sy nnn ovonirsan:
+
+ 9:28
+
+oro own wunnina Twin mna
+
+-AN?YAA AYYA Wann Nanta
+
+nnTNN '019
+
+jnwa nn 721
+14 moan
+09/03/2025 syn
+19:00-20:00 niyw
+
+DX ,AINTAN NYW NX qinv? a"nnn o0n TI71n
+"ew WA ANY OMONA wWaan? Ann 11'X
+ATR NTN? TIA NAPA Twn? nwa? wi — AIINN
+wan? aan 97 Anwi wan
+
+
+2025-02-24 15:27:49,060 - __main__ - INFO - found dates: ['09/03/2025']
+2025-02-24 15:27:49,060 - __main__ - INFO - found times: ['19:00-20:00', '19:00-20:00', '19:00-20:00']
+2025-02-24 15:27:49,060 - __main__ - INFO - found courts: ['14', '000', '14', '14', '14', '000', '14', '14']
+2025-02-24 15:27:49,184 - __main__ - INFO - extracted booking info - date: 09/03/2025, time: 19:00-20:00, court: 14
