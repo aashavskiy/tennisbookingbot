@@ -57,84 +57,126 @@ bot = telebot.TeleBot(TOKEN)
 # Database connection setup
 def init_connection_engine():
     """initializes a connection pool for a cloud sql mysql database."""
-    
-    # When deployed to Cloud Run, we can use the Unix socket
-    if os.environ.get("CLOUD_RUN", False):
-        return init_unix_connection_engine()
-    # When running locally, use a TCP socket
-    else:
-        return init_tcp_connection_engine()
+    try:
+        # When deployed to Cloud Run, we can use the Unix socket
+        if os.environ.get("CLOUD_RUN", False):
+            logger.info("using unix socket connection for cloud run")
+            return init_unix_connection_engine()
+        # When running locally, use a TCP socket
+        else:
+            logger.info("using tcp connection for local development")
+            return init_tcp_connection_engine()
+    except Exception as e:
+        logger.error(f"error initializing connection engine: {str(e)}")
+        raise e
 
 def init_tcp_connection_engine():
     """initialize a tcp connection pool for a cloud sql instance."""
-    db_config = {
-        "pool_size": 5,
-        "max_overflow": 2,
-        "pool_timeout": 30,
-        "pool_recycle": 1800,
-    }
-    
-    # Database connection string
-    db_user = DB_USER
-    db_pass = DB_PASS
-    db_name = DB_NAME
-    db_host = DB_HOST
-    
-    # MySQL connection URL
-    host_args = db_host.split(":")
-    host = host_args[0]
-    port = int(host_args[1]) if len(host_args) > 1 else 3306
-    
-    pool = sqlalchemy.create_engine(
-        sqlalchemy.engine.url.URL.create(
-            drivername="mysql+pymysql",
-            username=db_user,
-            password=db_pass,
-            host=host,
-            port=port,
-            database=db_name,
-        ),
-        **db_config
-    )
-    
-    logger.info("created tcp connection pool")
-    return pool
+    try:
+        db_config = {
+            "pool_size": 5,
+            "max_overflow": 2,
+            "pool_timeout": 30,
+            "pool_recycle": 1800,
+        }
+        
+        # Database connection string
+        db_user = DB_USER
+        db_pass = DB_PASS
+        db_name = DB_NAME
+        db_host = DB_HOST
+        
+        # MySQL connection URL
+        host_args = db_host.split(":")
+        host = host_args[0]
+        port = int(host_args[1]) if len(host_args) > 1 else 3306
+        
+        logger.info(f"attempting to connect to mysql at: {host}:{port}")
+        
+        pool = sqlalchemy.create_engine(
+            sqlalchemy.engine.url.URL.create(
+                drivername="mysql+pymysql",
+                username=db_user,
+                password=db_pass,
+                host=host,
+                port=port,
+                database=db_name,
+            ),
+            **db_config
+        )
+        
+        # Test the connection
+        with pool.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            logger.info("database connection test successful")
+        
+        logger.info("created tcp connection pool")
+        return pool
+    except Exception as e:
+        logger.error(f"error creating tcp connection: {str(e)}")
+        raise e
 
 def init_unix_connection_engine():
     """initialize a unix socket connection pool for a cloud sql instance."""
-    db_config = {
-        "pool_size": 5,
-        "max_overflow": 2,
-        "pool_timeout": 30,
-        "pool_recycle": 1800,
-    }
-    
-    db_user = DB_USER
-    db_pass = DB_PASS
-    db_name = DB_NAME
-    instance_connection_name = INSTANCE_CONNECTION_NAME
-    
-    pool = sqlalchemy.create_engine(
-        sqlalchemy.engine.url.URL.create(
-            drivername="mysql+pymysql",
-            username=db_user,
-            password=db_pass,
-            database=db_name,
-            query={
-                "unix_socket": f"/cloudsql/{instance_connection_name}"
-            }
-        ),
-        **db_config
-    )
-    
-    logger.info("created unix connection pool")
-    return pool
+    try:
+        db_config = {
+            "pool_size": 5,
+            "max_overflow": 2,
+            "pool_timeout": 30,
+            "pool_recycle": 1800,
+        }
+        
+        db_user = DB_USER
+        db_pass = DB_PASS
+        db_name = DB_NAME
+        instance_connection_name = INSTANCE_CONNECTION_NAME
+        
+        # The Unix socket path for Cloud Run
+        socket_path = f"/cloudsql/{instance_connection_name}"
+        
+        # Log the socket path for debugging
+        logger.info(f"attempting to connect using unix socket at: {socket_path}")
+        
+        # Connection string for MySQL
+        connection_string = f"mysql+pymysql://{db_user}:{db_pass}@/{db_name}?unix_socket={socket_path}"
+        logger.info(f"connection string (redacted password): {connection_string.replace(db_pass, '******')}")
+        
+        pool = sqlalchemy.create_engine(
+            connection_string,
+            **db_config
+        )
+        
+        # Test the connection
+        with pool.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            logger.info("database connection test successful")
+        
+        logger.info("created unix connection pool")
+        return pool
+    except Exception as e:
+        logger.error(f"error creating unix socket connection: {str(e)}")
+        # Provide more detailed error information
+        if "FileNotFoundError" in str(e):
+            logger.error(f"unix socket file not found. verify that cloud sql connection is configured properly.")
+            logger.error(f"ensure the cloud run service has the cloud sql instance added as a connection.")
+        raise e
 
 # Initialize the connection pool
-db = init_connection_engine()
+try:
+    db = init_connection_engine()
+    logger.info("database connection pool initialized")
+except Exception as e:
+    logger.error(f"failed to initialize database connection: {str(e)}")
+    # Continue with application startup even if database connection fails
+    # This allows the health check endpoint to report the status
+    db = None
 
 def init_db():
     """initializes the database tables"""
+    if db is None:
+        logger.error("cannot initialize database - connection pool is not available")
+        return False
+        
     try:
         # Create tables if they don't exist
         with db.connect() as conn:
@@ -177,12 +219,17 @@ def init_db():
                 logger.info(f"added admin user with id {ADMIN_ID}")
             
         logger.info("database initialized successfully")
+        return True
     except Exception as e:
         logger.error(f"error initializing database: {str(e)}")
-        raise e
+        return False
 
 def get_users():
     """retrieves all users"""
+    if db is None:
+        logger.error("database connection not available")
+        return []
+        
     try:
         with db.connect() as conn:
             result = conn.execute(text(
@@ -195,6 +242,10 @@ def get_users():
 
 def is_user_admin(user_id):
     """checks if the user is an admin"""
+    if db is None:
+        logger.error("database connection not available")
+        return False
+        
     try:
         with db.connect() as conn:
             result = conn.execute(text(
@@ -208,6 +259,10 @@ def is_user_admin(user_id):
 
 def is_user_approved(user_id):
     """checks if the user is approved"""
+    if db is None:
+        logger.error("database connection not available")
+        return False
+        
     try:
         with db.connect() as conn:
             result = conn.execute(text(
@@ -221,6 +276,10 @@ def is_user_approved(user_id):
 
 def approve_user(user_id):
     """approves a user"""
+    if db is None:
+        logger.error("database connection not available")
+        return False
+        
     try:
         with db.connect() as conn:
             conn.execute(text(
@@ -382,6 +441,10 @@ def process_image(file_path):
 
 def save_booking(user_id, date, time, court):
     """saves booking information to database"""
+    if db is None:
+        logger.error("database connection not available")
+        return False
+        
     try:
         with db.connect() as conn:
             conn.execute(text('''
@@ -401,6 +464,10 @@ def save_booking(user_id, date, time, court):
 
 def get_user_bookings(user_id):
     """retrieves all bookings for a specific user"""
+    if db is None:
+        logger.error("database connection not available")
+        return []
+        
     try:
         with db.connect() as conn:
             result = conn.execute(text('''
@@ -429,6 +496,10 @@ def check_admin(message):
 def handle_start(message):
     user_id = str(message.from_user.id)
     username = message.from_user.username
+    
+    if db is None:
+        bot.reply_to(message, "⚠️ The bot is currently experiencing database connectivity issues. Please try again later.")
+        return
     
     try:
         with db.connect() as conn:
@@ -513,6 +584,24 @@ def list_users(message):
             approved_status = "✅ Approved" if user[3] == 1 else "⏳ Pending"
             response += f"🆔 {user[0]} - @{user[1]}{admin_status} - {approved_status}\n"
         bot.send_message(message.chat.id, response)
+
+@bot.message_handler(commands=['dbstatus'])
+def db_status(message):
+    """checks and displays database connection status"""
+    if not is_user_admin(str(message.chat.id)):
+        bot.send_message(message.chat.id, "❌ You do not have permission to check database status.")
+        return
+        
+    if db is None:
+        bot.send_message(message.chat.id, "❌ Database connection pool is not initialized.")
+        return
+        
+    try:
+        with db.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            bot.send_message(message.chat.id, "✅ Database connection is working.")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Database connection test failed: {str(e)}")
 
 @bot.message_handler(commands=['bookings'])
 def list_bookings(message):
@@ -619,6 +708,9 @@ def webhook():
 @app.route('/health', methods=['GET'])
 def health():
     """health check endpoint for cloud run"""
+    if db is None:
+        return Response('Bot is running but database connection is not available', status=500)
+        
     try:
         # Check database connection
         with db.connect() as conn:
@@ -628,6 +720,25 @@ def health():
         logger.error(f"health check failed: {str(e)}")
         return Response(f'Bot is running but database connection failed: {str(e)}', status=500)
 
+# Database diagnostic endpoint
+@app.route('/dbinfo', methods=['GET'])
+def db_info():
+    """diagnostic endpoint for database information"""
+    if "admin" not in request.args.get("key", ""):
+        return Response('Unauthorized', status=403)
+        
+    try:
+        info = {
+            "db_host": DB_HOST,
+            "db_name": DB_NAME,
+            "instance_name": INSTANCE_CONNECTION_NAME,
+            "socket_path": f"/cloudsql/{INSTANCE_CONNECTION_NAME}",
+            "cloud_run": os.environ.get("CLOUD_RUN", False)
+        }
+        return Response(str(info), status=200)
+    except Exception as e:
+        return Response(f'Error: {str(e)}', status=500)
+
 # Root endpoint
 @app.route('/', methods=['GET'])
 def index():
@@ -636,8 +747,10 @@ def index():
 
 if __name__ == "__main__":
     # Initialize database
-    init_db()
-    
+    db_init_success = init_db()
+    if not db_init_success:
+        logger.warning("database initialization failed, but the bot will continue to run")
+        
     # Set webhook if WEBHOOK_URL is provided
     if WEBHOOK_URL:
         bot.remove_webhook()
