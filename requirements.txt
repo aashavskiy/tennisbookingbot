@@ -7,3 +7,6 @@ Pillow
 opencv-python-headless
 numpy
 requests
+pymysql
+SQLAlchemy
+cryptography

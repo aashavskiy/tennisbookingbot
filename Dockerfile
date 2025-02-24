@@ -8,10 +8,14 @@ RUN apt-get update && apt-get install -y \
     libtesseract-dev \
     libgl1-mesa-glx \
     libglib2.0-0 \
+    default-libmysqlclient-dev \
+    build-essential \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Tesseract data directory environment variable
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
+ENV CLOUD_RUN=True
 
 # Set working directory
 WORKDIR /app
@@ -24,10 +28,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the remaining project files
 COPY . .
-
-# Create directory for database if it doesn't exist
-RUN mkdir -p /data
-ENV DATABASE_PATH=/data/bookings.db
 
 # Expose the port that Cloud Run will use
 EXPOSE 8080

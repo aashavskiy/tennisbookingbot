@@ -1,5 +1,4 @@
 import os
-import sqlite3
 import logging
 import pytesseract
 import re
@@ -11,18 +10,27 @@ import io
 from dotenv import load_dotenv
 from datetime import datetime
 from flask import Flask, request, Response
+import pymysql
+import sqlalchemy
+from sqlalchemy import create_engine, text
 
-# load environment variables from .env file if it exists
+# Load environment variables from .env file if it exists
 load_dotenv()
 
-# configuration
+# Configuration
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")  # the admin who approves new users
-DATABASE = "bookings.db"
 PORT = int(os.environ.get("PORT", 8080))
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# set up logging
+# Google Cloud SQL configuration
+DB_USER = os.getenv("DB_USER")
+DB_PASS = os.getenv("DB_PASS")
+DB_NAME = os.getenv("DB_NAME")
+DB_HOST = os.getenv("DB_HOST")
+INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")  # project:region:instance
+
+# Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -33,9 +41,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# set tesseract path and data directory for cloud environment
-# in cloud run, tesseract will be at the default location
-# TESSDATA_PREFIX is set in the Dockerfile
+# Set tesseract path and data directory for cloud environment
 if os.path.exists("/usr/bin/tesseract"):
     pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
 elif os.path.exists("/opt/homebrew/bin/tesseract"):  # fallback for local development
@@ -44,68 +50,187 @@ elif os.path.exists("/opt/homebrew/bin/tesseract"):  # fallback for local develo
 if not TOKEN:
     raise ValueError("❌ ERROR: TELEGRAM_BOT_TOKEN is not set. Check your .env file or environment variables!")
 
-# initialize flask app
+# Initialize flask app
 app = Flask(__name__)
 bot = telebot.TeleBot(TOKEN)
 
+# Database connection setup
+def init_connection_engine():
+    """Initializes a connection pool for a Cloud SQL MySQL database."""
+    
+    # When deployed to Cloud Run, we can use the Unix socket
+    if os.environ.get("CLOUD_RUN", False):
+        return init_unix_connection_engine()
+    # When running locally, use a TCP socket
+    else:
+        return init_tcp_connection_engine()
+
+def init_tcp_connection_engine():
+    """Initialize a TCP connection pool for a Cloud SQL instance."""
+    db_config = {
+        "pool_size": 5,
+        "max_overflow": 2,
+        "pool_timeout": 30,
+        "pool_recycle": 1800,
+    }
+    
+    # Database connection string
+    db_user = DB_USER
+    db_pass = DB_PASS
+    db_name = DB_NAME
+    db_host = DB_HOST
+    
+    # MySQL connection URL
+    host_args = db_host.split(":")
+    host = host_args[0]
+    port = int(host_args[1]) if len(host_args) > 1 else 3306
+    
+    pool = sqlalchemy.create_engine(
+        sqlalchemy.engine.url.URL.create(
+            drivername="mysql+pymysql",
+            username=db_user,
+            password=db_pass,
+            host=host,
+            port=port,
+            database=db_name,
+        ),
+        **db_config
+    )
+    
+    logger.info("Created TCP connection pool")
+    return pool
+
+def init_unix_connection_engine():
+    """Initialize a Unix socket connection pool for a Cloud SQL instance."""
+    db_config = {
+        "pool_size": 5,
+        "max_overflow": 2,
+        "pool_timeout": 30,
+        "pool_recycle": 1800,
+    }
+    
+    db_user = DB_USER
+    db_pass = DB_PASS
+    db_name = DB_NAME
+    instance_connection_name = INSTANCE_CONNECTION_NAME
+    
+    pool = sqlalchemy.create_engine(
+        sqlalchemy.engine.url.URL.create(
+            drivername="mysql+pymysql",
+            username=db_user,
+            password=db_pass,
+            database=db_name,
+            query={
+                "unix_socket": f"/cloudsql/{instance_connection_name}"
+            }
+        ),
+        **db_config
+    )
+    
+    logger.info("Created Unix connection pool")
+    return pool
+
+# Initialize the connection pool
+db = init_connection_engine()
+
 def init_db():
-    """initializes the sqlite database"""
-    with sqlite3.connect(DATABASE) as conn:
-        cursor = conn.cursor()
-        
-        # create tables if they don't exist
-        cursor.execute('''CREATE TABLE IF NOT EXISTS bookings (
-                            id INTEGER PRIMARY KEY,
-                            user_id TEXT,
-                            date TEXT,
-                            time TEXT,
-                            court TEXT,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-                            
-        cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            user_id TEXT UNIQUE,
-                            username TEXT,
-                            is_admin INTEGER DEFAULT 0,
-                            is_approved INTEGER DEFAULT 0)''')
-        
-        # add admin user if not exists
-        cursor.execute('''INSERT OR IGNORE INTO users 
-                         (user_id, username, is_admin, is_approved) 
-                         VALUES (?, ?, 1, 1)''', 
-                      (ADMIN_ID, "Admin"))
-        conn.commit()
+    """initializes the database tables"""
+    try:
+        # Create tables if they don't exist
+        with db.connect() as conn:
+            # Create bookings table
+            conn.execute(text('''
+                CREATE TABLE IF NOT EXISTS bookings (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id VARCHAR(32) NOT NULL,
+                    date VARCHAR(32),
+                    time VARCHAR(32),
+                    court VARCHAR(32),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            '''))
+            
+            # Create users table
+            conn.execute(text('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id VARCHAR(32) UNIQUE NOT NULL,
+                    username VARCHAR(255),
+                    is_admin TINYINT DEFAULT 0,
+                    is_approved TINYINT DEFAULT 0
+                );
+            '''))
+            
+            # Check if admin user exists
+            result = conn.execute(text(
+                "SELECT COUNT(*) FROM users WHERE user_id = :admin_id"
+            ), {"admin_id": ADMIN_ID})
+            
+            count = result.fetchone()[0]
+            
+            # Add admin user if not exists
+            if count == 0:
+                conn.execute(text('''
+                    INSERT INTO users (user_id, username, is_admin, is_approved)
+                    VALUES (:admin_id, 'Admin', 1, 1)
+                '''), {"admin_id": ADMIN_ID})
+                logger.info(f"added admin user with id {ADMIN_ID}")
+            
+        logger.info("database initialized successfully")
+    except Exception as e:
+        logger.error(f"error initializing database: {str(e)}")
+        raise e
 
 def get_users():
     """retrieves all users"""
-    with sqlite3.connect(DATABASE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT user_id, username, is_admin, is_approved FROM users")
-        rows = cursor.fetchall()
-    return rows
+    try:
+        with db.connect() as conn:
+            result = conn.execute(text(
+                "SELECT user_id, username, is_admin, is_approved FROM users"
+            ))
+            return result.fetchall()
+    except Exception as e:
+        logger.error(f"error getting users: {str(e)}")
+        return []
 
 def is_user_admin(user_id):
     """checks if the user is an admin"""
-    with sqlite3.connect(DATABASE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT is_admin FROM users WHERE user_id = ?", (user_id,))
-        result = cursor.fetchone()
-    return result is not None and result[0] == 1
+    try:
+        with db.connect() as conn:
+            result = conn.execute(text(
+                "SELECT is_admin FROM users WHERE user_id = :user_id"
+            ), {"user_id": user_id})
+            row = result.fetchone()
+            return row is not None and row[0] == 1
+    except Exception as e:
+        logger.error(f"error checking admin status: {str(e)}")
+        return False
 
 def is_user_approved(user_id):
     """checks if the user is approved"""
-    with sqlite3.connect(DATABASE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT is_approved FROM users WHERE user_id = ?", (user_id,))
-        result = cursor.fetchone()
-    return result is not None and result[0] == 1
+    try:
+        with db.connect() as conn:
+            result = conn.execute(text(
+                "SELECT is_approved FROM users WHERE user_id = :user_id"
+            ), {"user_id": user_id})
+            row = result.fetchone()
+            return row is not None and row[0] == 1
+    except Exception as e:
+        logger.error(f"error checking approval status: {str(e)}")
+        return False
 
 def approve_user(user_id):
     """approves a user"""
-    with sqlite3.connect(DATABASE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE users SET is_approved = 1 WHERE user_id = ?", (user_id,))
-        conn.commit()
+    try:
+        with db.connect() as conn:
+            conn.execute(text(
+                "UPDATE users SET is_approved = 1 WHERE user_id = :user_id"
+            ), {"user_id": user_id})
+            logger.info(f"user {user_id} approved successfully")
+            return True
+    except Exception as e:
+        logger.error(f"error approving user: {str(e)}")
+        return False
 
 def extract_booking_info(text):
     """extracts date, time and court number from hebrew booking confirmation"""
@@ -249,12 +374,17 @@ def process_image(file_path):
 def save_booking(user_id, date, time, court):
     """saves booking information to database"""
     try:
-        with sqlite3.connect(DATABASE) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''INSERT INTO bookings (user_id, date, time, court)
-                            VALUES (?, ?, ?, ?)''',
-                         (user_id, date, time, court))
-            conn.commit()
+        with db.connect() as conn:
+            conn.execute(text('''
+                INSERT INTO bookings (user_id, date, time, court)
+                VALUES (:user_id, :date, :time, :court)
+            '''), {
+                "user_id": user_id,
+                "date": date,
+                "time": time,
+                "court": court
+            })
+            logger.info(f"booking saved for user {user_id} on {date} at {time}, court {court}")
             return True
     except Exception as e:
         logger.error(f"error saving booking: {str(e)}")
@@ -262,14 +392,18 @@ def save_booking(user_id, date, time, court):
 
 def get_user_bookings(user_id):
     """retrieves all bookings for a specific user"""
-    with sqlite3.connect(DATABASE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT date, time, court, created_at 
-            FROM bookings 
-            WHERE user_id = ? 
-            ORDER BY date, time""", (user_id,))
-        return cursor.fetchall()
+    try:
+        with db.connect() as conn:
+            result = conn.execute(text('''
+                SELECT date, time, court, created_at 
+                FROM bookings 
+                WHERE user_id = :user_id 
+                ORDER BY date, time
+            '''), {"user_id": user_id})
+            return result.fetchall()
+    except Exception as e:
+        logger.error(f"error retrieving bookings: {str(e)}")
+        return []
 
 @bot.message_handler(commands=['admin'])
 def check_admin(message):
@@ -287,43 +421,51 @@ def handle_start(message):
     user_id = str(message.from_user.id)
     username = message.from_user.username
     
-    with sqlite3.connect(DATABASE) as conn:
-        cursor = conn.cursor()
-        # check if user exists
-        cursor.execute("SELECT is_approved FROM users WHERE user_id = ?", (user_id,))
-        user = cursor.fetchone()
-        
-        if user is None:
-            # new user registration
-            cursor.execute('''INSERT OR IGNORE INTO users 
-                            (user_id, username, is_admin, is_approved) 
-                            VALUES (?, ?, 0, 0)''',
-                         (user_id, username))
-            conn.commit()
+    try:
+        with db.connect() as conn:
+            # Check if user exists
+            result = conn.execute(text(
+                "SELECT is_approved FROM users WHERE user_id = :user_id"
+            ), {"user_id": user_id})
             
-            # notify admin about new user
-            admin_markup = telebot.types.InlineKeyboardMarkup()
-            approve_button = telebot.types.InlineKeyboardButton(
-                text="✅ Approve",
-                callback_data=f"approve_{user_id}"
-            )
-            admin_markup.add(approve_button)
+            user = result.fetchone()
             
-            admin_message = (f"👤 New user registration request:\n"
-                           f"ID: {user_id}\n"
-                           f"Username: @{username}")
-            
-            bot.send_message(ADMIN_ID, admin_message, reply_markup=admin_markup)
-            
-            # notify user about pending approval
-            bot.reply_to(message, "👋 Welcome! Your access request has been sent to the administrator. "
-                                "Please wait for approval.")
-        elif not user[0]:
-            # existing but not approved user
-            bot.reply_to(message, "⏳ Your access request is still pending. Please wait for administrator approval.")
-        else:
-            # approved user
-            bot.reply_to(message, "✅ Welcome back! You can use the bot's features.")
+            if user is None:
+                # New user registration
+                conn.execute(text('''
+                    INSERT INTO users (user_id, username, is_admin, is_approved)
+                    VALUES (:user_id, :username, 0, 0)
+                '''), {
+                    "user_id": user_id,
+                    "username": username or "Unknown"
+                })
+                
+                # Notify admin about new user
+                admin_markup = telebot.types.InlineKeyboardMarkup()
+                approve_button = telebot.types.InlineKeyboardButton(
+                    text="✅ Approve",
+                    callback_data=f"approve_{user_id}"
+                )
+                admin_markup.add(approve_button)
+                
+                admin_message = (f"👤 New user registration request:\n"
+                               f"ID: {user_id}\n"
+                               f"Username: @{username}")
+                
+                bot.send_message(ADMIN_ID, admin_message, reply_markup=admin_markup)
+                
+                # Notify user about pending approval
+                bot.reply_to(message, "👋 Welcome! Your access request has been sent to the administrator. "
+                                    "Please wait for approval.")
+            elif not user[0]:
+                # Existing but not approved user
+                bot.reply_to(message, "⏳ Your access request is still pending. Please wait for administrator approval.")
+            else:
+                # Approved user
+                bot.reply_to(message, "✅ Welcome back! You can use the bot's features.")
+    except Exception as e:
+        logger.error(f"error handling start command: {str(e)}")
+        bot.reply_to(message, "Sorry, there was an error processing your request. Please try again later.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('approve_'))
 def handle_approval(call):
@@ -332,24 +474,26 @@ def handle_approval(call):
         return
     
     user_id = call.data.split('_')[1]
-    approve_user(user_id)
-    
-    # notify admin
-    bot.edit_message_reply_markup(chat_id=call.message.chat.id,
-                                message_id=call.message.message_id,
-                                reply_markup=None)
-    bot.edit_message_text(chat_id=call.message.chat.id,
-                         message_id=call.message.message_id,
-                         text=f"{call.message.text}\n\n✅ Approved!")
-    
-    # notify approved user
-    bot.send_message(user_id, "✅ Your access has been approved! You can now use the bot's features.")
+    if approve_user(user_id):
+        # Notify admin
+        bot.edit_message_reply_markup(chat_id=call.message.chat.id,
+                                    message_id=call.message.message_id,
+                                    reply_markup=None)
+        bot.edit_message_text(chat_id=call.message.chat.id,
+                             message_id=call.message.message_id,
+                             text=f"{call.message.text}\n\n✅ Approved!")
+        
+        # Notify approved user
+        bot.send_message(user_id, "✅ Your access has been approved! You can now use the bot's features.")
+    else:
+        bot.answer_callback_query(call.id, "❌ There was an error approving the user.")
 
 @bot.message_handler(commands=['users'])
 def list_users(message):
     if not is_user_admin(str(message.chat.id)):
         bot.send_message(message.chat.id, "❌ You do not have permission to view users.")
         return
+    
     users = get_users()
     if not users:
         bot.send_message(message.chat.id, "📭 No users found.")
@@ -466,7 +610,14 @@ def webhook():
 @app.route('/health', methods=['GET'])
 def health():
     """health check endpoint for cloud run"""
-    return Response('Bot is running', status=200)
+    try:
+        # Check database connection
+        with db.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return Response('Bot is running with database connection', status=200)
+    except Exception as e:
+        logger.error(f"health check failed: {str(e)}")
+        return Response(f'Bot is running but database connection failed: {str(e)}', status=500)
 
 # Root endpoint
 @app.route('/', methods=['GET'])
@@ -475,10 +626,10 @@ def index():
     return Response('Tennis Booking Bot is active', status=200)
 
 if __name__ == "__main__":
-    # initialize database
+    # Initialize database
     init_db()
     
-    # set webhook if WEBHOOK_URL is provided
+    # Set webhook if WEBHOOK_URL is provided
     if WEBHOOK_URL:
         bot.remove_webhook()
         bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
@@ -486,6 +637,6 @@ if __name__ == "__main__":
     else:
         logger.warning("WEBHOOK_URL not provided. Running in local mode only.")
     
-    # start flask server
+    # Start flask server
     logger.info(f"✅ starting web server on port {PORT}...")
     app.run(host='0.0.0.0', port=PORT, debug=False)
