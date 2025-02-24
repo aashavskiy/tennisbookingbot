@@ -1,24 +1,36 @@
 # Use official Python image
-FROM python:3.11
+FROM python:3.11-slim
 
-# Install Tesseract and Hebrew language support
+# Install Tesseract, language pack and OpenCV dependencies
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-heb \
     libtesseract-dev \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
+
+# Set Tesseract data directory environment variable
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
 
 # Set working directory
 WORKDIR /app
 
-# Copy the project files
-COPY . .
+# Copy requirements first for better caching
+COPY requirements.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose the port for Cloud Run
+# Copy the remaining project files
+COPY . .
+
+# Create directory for database if it doesn't exist
+RUN mkdir -p /data
+ENV DATABASE_PATH=/data/bookings.db
+
+# Expose the port that Cloud Run will use
 EXPOSE 8080
 
-# Run the bot
+# Command to run the application
 CMD exec python tennis_booking_bot.py

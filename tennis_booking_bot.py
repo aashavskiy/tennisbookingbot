@@ -10,6 +10,7 @@ from PIL import Image
 import io
 from dotenv import load_dotenv
 from datetime import datetime
+from flask import Flask, request, Response
 
 # load environment variables from .env file if it exists
 load_dotenv()
@@ -18,6 +19,8 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")  # the admin who approves new users
 DATABASE = "bookings.db"
+PORT = int(os.environ.get("PORT", 8080))
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 # set up logging
 logging.basicConfig(
@@ -30,39 +33,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# set tesseract path and data directory manually if needed
-TESSERACT_PATH = "/opt/homebrew/bin/tesseract"  # updated for your system
-TESSERACT_DATA_DIR = "/opt/homebrew/share/tessdata"  # path to tessdata directory
-
-# set tessdata environment variable
-os.environ["TESSDATA_PREFIX"] = TESSERACT_DATA_DIR
-
-if os.path.exists(TESSERACT_PATH):
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
-else:
-    raise ValueError(f"❌ ERROR: Tesseract not found at {TESSERACT_PATH}. Check installation and PATH.")
-
-# verify that hebrew language data file exists
-heb_data_path = os.path.join(TESSERACT_DATA_DIR, "heb.traineddata")
-if not os.path.exists(heb_data_path):
-    logger.warning(f"Hebrew language data file not found at {heb_data_path}")
-    logger.warning("OCR for Hebrew text may not work correctly")
-    logger.warning("Install Hebrew language pack with: 'brew install tesseract-lang' or 'apt-get install tesseract-ocr-heb'")
+# set tesseract path and data directory for cloud environment
+# in cloud run, tesseract will be at the default location
+# TESSDATA_PREFIX is set in the Dockerfile
+if os.path.exists("/usr/bin/tesseract"):
+    pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+elif os.path.exists("/opt/homebrew/bin/tesseract"):  # fallback for local development
+    pytesseract.pytesseract.tesseract_cmd = "/opt/homebrew/bin/tesseract"
 
 if not TOKEN:
     raise ValueError("❌ ERROR: TELEGRAM_BOT_TOKEN is not set. Check your .env file or environment variables!")
 
+# initialize flask app
+app = Flask(__name__)
 bot = telebot.TeleBot(TOKEN)
 
 def init_db():
+    """initializes the sqlite database"""
     with sqlite3.connect(DATABASE) as conn:
         cursor = conn.cursor()
         
-        # drop existing tables to ensure clean schema
-        cursor.execute("DROP TABLE IF EXISTS users")
-        cursor.execute("DROP TABLE IF EXISTS bookings")
-        
-        # create tables with updated schema
+        # create tables if they don't exist
         cursor.execute('''CREATE TABLE IF NOT EXISTS bookings (
                             id INTEGER PRIMARY KEY,
                             user_id TEXT,
@@ -78,7 +69,7 @@ def init_db():
                             is_admin INTEGER DEFAULT 0,
                             is_approved INTEGER DEFAULT 0)''')
         
-        # add admin user
+        # add admin user if not exists
         cursor.execute('''INSERT OR IGNORE INTO users 
                          (user_id, username, is_admin, is_approved) 
                          VALUES (?, ?, 1, 1)''', 
@@ -409,11 +400,16 @@ def handle_photo(message):
         downloaded_file = bot.download_file(file_info.file_path)
         
         # save the photo temporarily
-        with open("temp_image.jpg", 'wb') as new_file:
+        temp_dir = "/tmp"  # use /tmp for cloud run
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+            
+        temp_file = os.path.join(temp_dir, "temp_image.jpg")
+        with open(temp_file, 'wb') as new_file:
             new_file.write(downloaded_file)
         
         # process the image
-        extracted_text = process_image("temp_image.jpg")
+        extracted_text = process_image(temp_file)
         
         if extracted_text:
             date, time, court = extract_booking_info(extracted_text)
@@ -441,7 +437,8 @@ def handle_photo(message):
             logger.warning("no text could be extracted from the image")
             
         # clean up temporary file
-        os.remove("temp_image.jpg")
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
         
     except Exception as e:
         logger.error(f"error handling photo: {str(e)}")
@@ -453,7 +450,42 @@ def check_access(message):
         bot.reply_to(message, "⏳ Please wait for administrator approval before using the bot.")
         return
 
+# Flask route to handle webhook from Telegram
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    """handles telegram webhook requests"""
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return Response('', status=200)
+    else:
+        return Response('', status=403)
+
+# Health check endpoint
+@app.route('/health', methods=['GET'])
+def health():
+    """health check endpoint for cloud run"""
+    return Response('Bot is running', status=200)
+
+# Root endpoint
+@app.route('/', methods=['GET'])
+def index():
+    """root endpoint for cloud run"""
+    return Response('Tennis Booking Bot is active', status=200)
+
 if __name__ == "__main__":
+    # initialize database
     init_db()
-    logger.info("✅ starting bot with polling mode...")
-    bot.infinity_polling()
+    
+    # set webhook if WEBHOOK_URL is provided
+    if WEBHOOK_URL:
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+        logger.info(f"✅ webhook set to {WEBHOOK_URL}/{TOKEN}")
+    else:
+        logger.warning("WEBHOOK_URL not provided. Running in local mode only.")
+    
+    # start flask server
+    logger.info(f"✅ starting web server on port {PORT}...")
+    app.run(host='0.0.0.0', port=PORT, debug=False)

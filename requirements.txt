@@ -1,8 +1,9 @@
 flask
-telebot
+pyTelegramBotAPI
 python-dotenv
 gunicorn
 pytesseract
 Pillow
 opencv-python-headless
 numpy
+requests
