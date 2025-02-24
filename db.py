@@ -228,6 +228,24 @@ def init_db():
                     VALUES (:admin_id, 'Admin', 1, 1)
                 '''), {"admin_id": ADMIN_ID})
                 logger.info(f"added admin user with id {ADMIN_ID}")
+            else:
+                # Make sure the admin user has admin privileges
+                conn.execute(text('''
+                    UPDATE users SET is_admin = 1, is_approved = 1
+                    WHERE user_id = :admin_id
+                '''), {"admin_id": ADMIN_ID})
+                logger.info(f"updated admin privileges for user id {ADMIN_ID}")
+            
+            # Log current admin status
+            logger.info(f"Admin ID from config: {ADMIN_ID}")
+            admin_check = conn.execute(text(
+                "SELECT user_id, username, is_admin, is_approved FROM users WHERE user_id = :admin_id"
+            ), {"admin_id": ADMIN_ID}).fetchone()
+            
+            if admin_check:
+                logger.info(f"Admin user in database: ID={admin_check[0]}, Username={admin_check[1]}, is_admin={admin_check[2]}, is_approved={admin_check[3]}")
+            else:
+                logger.warning(f"Admin user with ID {ADMIN_ID} not found in database after initialization")
             
         logger.info("database initialized successfully")
         return True
@@ -256,6 +274,11 @@ def is_user_admin(user_id):
     if db is None:
         logger.error("database connection not available")
         return False
+    
+    # Direct check for configured admin ID
+    if str(user_id) == str(ADMIN_ID):
+        logger.info(f"User {user_id} recognized as admin via direct config match")
+        return True
         
     try:
         with db.connect() as conn:
@@ -263,16 +286,23 @@ def is_user_admin(user_id):
                 "SELECT is_admin FROM users WHERE user_id = :user_id"
             ), {"user_id": user_id})
             row = result.fetchone()
-            return row is not None and row[0] == 1
+            is_admin = row is not None and row[0] == 1
+            logger.info(f"Admin check for user {user_id}: {is_admin}")
+            return is_admin
     except Exception as e:
         logger.error(f"error checking admin status: {str(e)}")
-        return False
+        # Fallback to granting admin access if user_id matches ADMIN_ID
+        return str(user_id) == str(ADMIN_ID)
 
 def is_user_approved(user_id):
     """Checks if the user is approved"""
     if db is None:
         logger.error("database connection not available")
         return False
+    
+    # Admin is always approved
+    if str(user_id) == str(ADMIN_ID):
+        return True
         
     try:
         with db.connect() as conn:
@@ -349,18 +379,26 @@ def create_user(user_id, username, is_admin=0, is_approved=0):
     if db is None:
         logger.error("database connection not available")
         return False
+    
+    # Force admin status if this is the configured admin ID
+    if str(user_id) == str(ADMIN_ID):
+        is_admin = 1
+        is_approved = 1
         
     try:
         with db.connect() as conn:
             conn.execute(text('''
                 INSERT INTO users (user_id, username, is_admin, is_approved) 
                 VALUES (:user_id, :username, :is_admin, :is_approved)
-                ON DUPLICATE KEY UPDATE username = :username
+                ON DUPLICATE KEY UPDATE username = :username, 
+                is_admin = CASE WHEN user_id = :admin_id THEN 1 ELSE is_admin END,
+                is_approved = CASE WHEN user_id = :admin_id THEN 1 ELSE is_approved END
             '''), {
                 "user_id": user_id, 
                 "username": username or "Unknown", 
                 "is_admin": is_admin, 
-                "is_approved": is_approved
+                "is_approved": is_approved,
+                "admin_id": ADMIN_ID
             })
             logger.info(f"created or updated user {user_id}")
             return True
@@ -373,6 +411,10 @@ def check_user_status(user_id):
     if db is None:
         logger.error("database connection not available")
         return None
+    
+    # Admin is always approved
+    if str(user_id) == str(ADMIN_ID):
+        return 1
         
     try:
         with db.connect() as conn:

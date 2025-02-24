@@ -10,9 +10,12 @@ load_dotenv()
 
 # Telegram Bot configuration
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-ADMIN_ID = os.getenv("ADMIN_ID")  # the admin who approves new users
+ADMIN_ID = os.getenv("ADMIN_ID", "100013433")  # Default to your ID if not set in env
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.environ.get("PORT", 8080))
+
+# Log the admin ID for debugging
+print(f"ADMIN_ID configured as: {ADMIN_ID}")
 
 # Google Cloud SQL configuration
 DB_USER = os.getenv("DB_USER")
@@ -35,6 +38,9 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Log important configuration
+logger.info(f"Starting with ADMIN_ID: {ADMIN_ID}")
 
 # Cloud environment detection
 IS_CLOUD_RUN = os.environ.get("CLOUD_RUN", False)
