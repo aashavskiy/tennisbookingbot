@@ -30,5 +30,5 @@ COPY config.py db.py image_processing.py bot_handlers.py routes.py main.py ./
 # Expose the port that Cloud Run will use
 EXPOSE 8080
 
-# Command to run the application
-CMD exec python main.py
+# Command to run the application with Gunicorn for reliability
+CMD exec gunicorn --bind :8080 --workers 1 --threads 8 --timeout 0 main:app
