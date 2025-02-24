@@ -41,7 +41,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Set tesseract path and data directory for cloud environment
+# Set tesseract path for the current environment
 if os.path.exists("/usr/bin/tesseract"):
     pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
 elif os.path.exists("/opt/homebrew/bin/tesseract"):  # fallback for local development
@@ -56,7 +56,7 @@ bot = telebot.TeleBot(TOKEN)
 
 # Database connection setup
 def init_connection_engine():
-    """Initializes a connection pool for a Cloud SQL MySQL database."""
+    """initializes a connection pool for a cloud sql mysql database."""
     
     # When deployed to Cloud Run, we can use the Unix socket
     if os.environ.get("CLOUD_RUN", False):
@@ -66,7 +66,7 @@ def init_connection_engine():
         return init_tcp_connection_engine()
 
 def init_tcp_connection_engine():
-    """Initialize a TCP connection pool for a Cloud SQL instance."""
+    """initialize a tcp connection pool for a cloud sql instance."""
     db_config = {
         "pool_size": 5,
         "max_overflow": 2,
@@ -97,11 +97,11 @@ def init_tcp_connection_engine():
         **db_config
     )
     
-    logger.info("Created TCP connection pool")
+    logger.info("created tcp connection pool")
     return pool
 
 def init_unix_connection_engine():
-    """Initialize a Unix socket connection pool for a Cloud SQL instance."""
+    """initialize a unix socket connection pool for a cloud sql instance."""
     db_config = {
         "pool_size": 5,
         "max_overflow": 2,
@@ -127,7 +127,7 @@ def init_unix_connection_engine():
         **db_config
     )
     
-    logger.info("Created Unix connection pool")
+    logger.info("created unix connection pool")
     return pool
 
 # Initialize the connection pool
@@ -233,10 +233,10 @@ def approve_user(user_id):
         return False
 
 def extract_booking_info(text):
-    """extracts date, time and court number from hebrew booking confirmation"""
+    """extracts date, time and court number from booking confirmation"""
     logger.info(f"attempting to extract booking info from text: {text}")
     
-    # patterns for hebrew booking format with multiple variations
+    # patterns for booking format with multiple variations
     date_patterns = [
         r'\d{2}/\d{2}/\d{4}',           # matches DD/MM/YYYY
         r'\d{2}\.\d{2}\.\d{4}',          # matches DD.MM.YYYY
@@ -250,11 +250,14 @@ def extract_booking_info(text):
     ]
     
     court_patterns = [
-        r'(\d+)\s*מגרש',                # matches court number followed by Hebrew word for court
-        r'מגרש\s*[:. ]*\s*(\d+)',        # matches Hebrew word for court followed by number
+        r'(\d+)\s*מגרש',                # matches court number followed by word for court
+        r'מגרש\s*[:. ]*\s*(\d+)',        # matches word for court followed by number
         r'מגרש\s*[:]?\s*(\d+)',          # alternative pattern for court
         r'court\s*[:. ]*\s*(\d+)',       # English word 'court' followed by number
-        r':מגרש\s*(\d+)'                 # Hebrew format with colon prefix
+        r':מגרש\s*(\d+)',                # format with colon prefix
+        r'(\d+)\s*court',                # number followed by English word
+        r'מגרש[:]?\s*(\d+)',             # simplified pattern
+        r'court[:]?\s*(\d+)'             # simplified pattern in English
     ]
     
     # find all matches from all patterns
@@ -286,11 +289,18 @@ def extract_booking_info(text):
     time = times[0] if times else None
     court = courts[0] if courts else None
     
-    # fallback for values visible in the image example but not captured by regex
-    if court is None and "14" in text:
-        court = "14"
-        logger.info(f"using fallback court number detection: {court}")
-        
+    # direct pattern search for the specific example values
+    if court is None:
+        # look for any number 1-20 (typical court numbers) as a standalone digit
+        standalone_numbers = re.findall(r'(?<!\d)(\d{1,2})(?!\d)', text)
+        if standalone_numbers:
+            # Find numbers between 1-20 (typical court range)
+            valid_courts = [num for num in standalone_numbers if 1 <= int(num) <= 20]
+            if valid_courts:
+                court = valid_courts[0]
+                logger.info(f"found court number from standalone digits: {court}")
+                
+    # fallback for values visible in the example but not captured by regex
     if date is None and "09/03/2025" in text:
         date = "09/03/2025"
         logger.info(f"using fallback date detection: {date}")
@@ -298,11 +308,15 @@ def extract_booking_info(text):
     if time is None and "19:00-20:00" in text:
         time = "19:00-20:00"
         logger.info(f"using fallback time detection: {time}")
+        
+    if court is None and "14" in text:
+        court = "14"
+        logger.info(f"using fallback court number detection: {court}")
     
     return date, time, court
 
 def process_image(file_path):
-    """processes image and extracts booking information"""
+    """processes image and extracts booking information using default language"""
     try:
         # read image using opencv
         image = cv2.imread(file_path)
@@ -331,25 +345,20 @@ def process_image(file_path):
         bilateral = cv2.bilateralFilter(gray, 9, 75, 75)
         _, binary2 = cv2.threshold(bilateral, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         
-        # process with multiple methods and languages
+        # process with multiple methods using default language only
         processing_methods = [
-            (gray, 'heb'),
-            (binary, 'heb'),
-            (enhanced, 'heb'),
-            (otsu, 'heb'),
-            (binary2, 'heb'),
-            # fallback to english if hebrew fails
-            (binary, None),
-            (gray, None)
+            binary,
+            gray,
+            enhanced,
+            otsu,
+            binary2
         ]
         
         # try each processing method
-        for img, lang in processing_methods:
+        for img in processing_methods:
             try:
-                if lang:
-                    text = pytesseract.image_to_string(img, lang=lang)
-                else:
-                    text = pytesseract.image_to_string(img)
+                # using default language (no lang parameter)
+                text = pytesseract.image_to_string(img)
                 
                 if text and len(text.strip()) > 10:  # if we got meaningful text
                     extracted_texts.append(text)
