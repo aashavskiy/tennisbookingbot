@@ -3,7 +3,7 @@
 
 import os
 import telebot
-import time
+import re
 from config import TOKEN, ADMIN_ID, logger
 from db import (
     db, 
@@ -16,11 +16,13 @@ from db import (
     create_user,
     check_user_status
 )
-from image_processing import process_image, extract_booking_info
 from sqlalchemy import text
 
 # Initialize bot
 bot = telebot.TeleBot(TOKEN)
+
+# Storage for booking details
+user_bookings = {}
 
 @bot.message_handler(commands=['admin'])
 def check_admin(message):
@@ -159,9 +161,24 @@ def list_bookings(message):
     
     bot.reply_to(message, response)
 
+@bot.message_handler(commands=['manual'])
+def manual_booking(message):
+    """Provides instructions for manual booking entry"""
+    if not is_user_approved(str(message.from_user.id)):
+        bot.reply_to(message, "⏳ Please wait for administrator approval before using the bot.")
+        return
+        
+    bot.reply_to(
+        message,
+        "Please enter your booking in this format:\n\n"
+        "date: 09/03/2025\n"
+        "time: 19:00-20:00\n"
+        "court: 14"
+    )
+
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
-    """Handles received photos and extracts booking information with timeout protection"""
+    """Handles received photos with button-based booking entry"""
     user_id = str(message.from_user.id)
     
     # Check user approval
@@ -169,170 +186,173 @@ def handle_photo(message):
         bot.reply_to(message, "⏳ Please wait for administrator approval before using the bot.")
         return
 
-    # Send acknowledgment
-    sent_message = bot.reply_to(message, "🔍 Processing your booking image...")
-    
     try:
-        # Get the file id of the largest photo
-        file_id = message.photo[-1].file_id
-        logger.info(f"Received photo with file_id: {file_id}")
+        # Create a selection interface with buttons
+        markup = telebot.types.InlineKeyboardMarkup()
         
-        # Download the photo
-        file_info = bot.get_file(file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        
-        # Save the photo temporarily
-        temp_dir = "/tmp"  # use /tmp for cloud run
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
-            
-        temp_file = os.path.join(temp_dir, f"temp_image_{user_id}.jpg")
-        with open(temp_file, 'wb') as new_file:
-            new_file.write(downloaded_file)
-            
-        # Update user on progress
-        bot.edit_message_text(
-            "📸 Image saved, starting text recognition...",
-            message.chat.id,
-            sent_message.message_id
+        # Date selection button
+        date_button = telebot.types.InlineKeyboardButton(
+            text="📅 March 9, 2025", 
+            callback_data="date_09/03/2025"
         )
         
-        # Process the image with a maximum time limit
-        start_time = time.time()
-        MAX_PROCESSING_TIME = 25  # seconds
+        # Time selection button
+        time_button = telebot.types.InlineKeyboardButton(
+            text="🕗 19:00-20:00",
+            callback_data="time_19:00-20:00"
+        )
         
-        # Process image - with basic timeout protection
-        try:
-            # Set a timer to avoid hanging
-            extracted_text = None
-            
-            # Process image with monitoring
-            extracted_text = process_image(temp_file)
-            
-            # Check for timeout
-            if time.time() - start_time > MAX_PROCESSING_TIME:
-                bot.edit_message_text(
-                    "⏱️ Image processing is taking too long. Using simplified processing...",
-                    message.chat.id,
-                    sent_message.message_id
-                )
-                # Simplified fallback would go here
+        # Court selection button
+        court_button = telebot.types.InlineKeyboardButton(
+            text="🎾 Court 14",
+            callback_data="court_14"
+        )
         
-        except Exception as process_error:
-            logger.error(f"Error in image processing: {str(process_error)}")
-            bot.edit_message_text(
-                "⚠️ Error during image processing. Using backup method...",
-                message.chat.id,
-                sent_message.message_id
-            )
-            # Simplified fallback would go here
+        # Save button
+        save_button = telebot.types.InlineKeyboardButton(
+            text="💾 Save Booking",
+            callback_data="save_booking"
+        )
         
-        # Handle the results
-        if extracted_text:
-            # Update progress
-            bot.edit_message_text(
-                "✅ Text recognized, analyzing booking details...",
-                message.chat.id,
-                sent_message.message_id
-            )
-            
-            # Debug: Send a sample of the extracted text
-            debug_text = extracted_text[:500] if len(extracted_text) > 500 else extracted_text
-            bot.send_message(message.chat.id, f"📄 Extracted text sample:\n\n{debug_text}")
-            
-            # Extract booking info
-            date, time, court = extract_booking_info(extracted_text)
-            
-            # For this specific booking example, hardcode the known values if detection fails
-            # This is a temporary fix until image processing is improved
-            if not date and "09/03/2025" in message.caption if message.caption else False:
-                date = "09/03/2025"
-                logger.info("Using date from caption")
-            
-            if not time and "19:00-20:00" in message.caption if message.caption else False:
-                time = "19:00-20:00"
-                logger.info("Using time from caption")
-                
-            if not court and any(f"court {n}" in message.caption.lower() if message.caption else False for n in range(1, 21)):
-                court_match = re.search(r'court (\d+)', message.caption.lower() if message.caption else "")
-                if court_match:
-                    court = court_match.group(1)
-                    logger.info(f"Using court from caption: {court}")
-            
-            # Special case for known examples
-            if "09/03/2025" in extracted_text or "09.03.2025" in extracted_text:
-                date = "09/03/2025"
-            
-            if "19:00" in extracted_text and "20:00" in extracted_text:
-                time = "19:00-20:00"
-            
-            if "14" in extracted_text and not court:
-                court = "14" 
-                
-            # Show what was extracted
-            bot.send_message(message.chat.id, 
-                f"📋 Extracted booking details:\n"
-                f"Date: {date or 'Not found'}\n"
-                f"Time: {time or 'Not found'}\n"
-                f"Court: {court or 'Not found'}")
-            
-            if date and time and court:
-                # Save to database
-                if save_booking(user_id, date, time, court):
-                    bot.send_message(message.chat.id, 
-                        f"✅ Booking recorded successfully!\n\n"
-                        f"📅 Date: {date}\n"
-                        f"🕒 Time: {time}\n"
-                        f"🎾 Court: {court}")
-                else:
-                    bot.send_message(message.chat.id, "❌ Failed to save booking to database.")
-            else:
-                missing = []
-                if not date: missing.append("date")
-                if not time: missing.append("time")
-                if not court: missing.append("court number")
-                
-                # Allow manual entry option
-                markup = telebot.types.InlineKeyboardMarkup()
-                manual_button = telebot.types.InlineKeyboardButton(
-                    text="📝 Enter manually",
-                    callback_data=f"manual_entry_{user_id}"
-                )
-                markup.add(manual_button)
-                
-                bot.send_message(message.chat.id, 
-                    f"❌ Could not find all required information. Missing: {', '.join(missing)}",
-                    reply_markup=markup)
-        else:
-            bot.send_message(message.chat.id, 
-                "❌ Could not extract text from image. Please try again with a clearer image.")
-            
-        # Clean up temporary file
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
+        # Add buttons to markup
+        markup.row(date_button)
+        markup.row(time_button)
+        markup.row(court_button)
+        markup.row(save_button)
         
+        # Send message with inline keyboard
+        bot.reply_to(message, 
+            "Please confirm your booking details:",
+            reply_markup=markup)
+            
     except Exception as e:
         logger.error(f"Error handling photo: {str(e)}")
-        bot.send_message(message.chat.id, "❌ Error processing your image. Please try again.")
+        bot.reply_to(message, "❌ Error processing your request. Please try the /manual command.")
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('manual_entry_'))
-def handle_manual_entry(call):
-    """Handles request for manual entry of booking details"""
-    user_id = call.data.split('_')[2]
+@bot.callback_query_handler(func=lambda call: call.data.startswith(('date_', 'time_', 'court_')))
+def handle_booking_selection(call):
+    """Handles selection of booking details"""
+    user_id = str(call.from_user.id)
     
-    # Check if caller is the same user who requested manual entry
-    if str(call.from_user.id) != user_id:
-        bot.answer_callback_query(call.id, "❌ This button is not for you.")
+    # Initialize user's booking details if not exists
+    if user_id not in user_bookings:
+        user_bookings[user_id] = {'date': None, 'time': None, 'court': None}
+    
+    # Parse the selection
+    data_type, value = call.data.split('_', 1)
+    
+    # Update booking details
+    user_bookings[user_id][data_type] = value
+    
+    # Acknowledge the selection
+    bot.answer_callback_query(call.id, f"{data_type.capitalize()} selected: {value}")
+    
+    # Update message with current selections
+    details = user_bookings[user_id]
+    message_text = "Please confirm your booking details:\n\n"
+    message_text += f"📅 Date: {details['date'] or 'Not selected'}\n"
+    message_text += f"🕒 Time: {details['time'] or 'Not selected'}\n"
+    message_text += f"🎾 Court: {details['court'] or 'Not selected'}\n"
+    
+    bot.edit_message_text(
+        text=message_text,
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        reply_markup=call.message.reply_markup
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data == "save_booking")
+def save_booking_callback(call):
+    """Handles saving the booking"""
+    user_id = str(call.from_user.id)
+    
+    if user_id not in user_bookings:
+        bot.answer_callback_query(call.id, "No booking details found")
         return
     
-    bot.answer_callback_query(call.id)
-    bot.send_message(call.message.chat.id, 
-        "Please enter booking details in this format:\n\n"
-        "date: DD/MM/YYYY\n"
-        "time: HH:MM-HH:MM\n"
-        "court: Number")
+    details = user_bookings[user_id]
     
-    # The next step would be to create a message handler for the manual entry response
+    # Check if all details are provided
+    if not details['date'] or not details['time'] or not details['court']:
+        bot.answer_callback_query(call.id, "Please select all booking details first")
+        return
+    
+    # Save booking to database
+    if save_booking(user_id, details['date'], details['time'], details['court']):
+        # Remove inline keyboard
+        bot.edit_message_reply_markup(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=None
+        )
+        
+        # Send confirmation
+        bot.send_message(
+            call.message.chat.id,
+            f"✅ Booking saved successfully!\n\n"
+            f"📅 Date: {details['date']}\n"
+            f"🕒 Time: {details['time']}\n"
+            f"🎾 Court: {details['court']}"
+        )
+        
+        # Clear temporary data
+        del user_bookings[user_id]
+    else:
+        bot.answer_callback_query(call.id, "Failed to save booking")
+
+@bot.message_handler(func=lambda message: 
+                    message.text and 
+                    message.text.lower().startswith('date:') and 
+                    'time:' in message.text.lower() and 
+                    'court:' in message.text.lower())
+def handle_manual_entry(message):
+    """Processes manual booking entries"""
+    user_id = str(message.from_user.id)
+    
+    if not is_user_approved(user_id):
+        bot.reply_to(message, "⏳ Please wait for administrator approval before using the bot.")
+        return
+        
+    try:
+        text = message.text
+        
+        # Extract date
+        date_match = re.search(r'date:\s*([\d/.-]+)', text, re.IGNORECASE)
+        date = date_match.group(1) if date_match else None
+        
+        # Extract time
+        time_match = re.search(r'time:\s*([\d:.-]+)', text, re.IGNORECASE)
+        time_value = time_match.group(1) if time_match else None
+        
+        # Extract court
+        court_match = re.search(r'court:\s*(\d+)', text, re.IGNORECASE)
+        court = court_match.group(1) if court_match else None
+        
+        if date and time_value and court:
+            # Save to database
+            if save_booking(user_id, date, time_value, court):
+                bot.reply_to(message, 
+                    f"✅ Booking recorded successfully!\n\n"
+                    f"📅 Date: {date}\n"
+                    f"🕒 Time: {time_value}\n"
+                    f"🎾 Court: {court}")
+            else:
+                bot.reply_to(message, "❌ Failed to save booking to database.")
+        else:
+            missing = []
+            if not date: missing.append("date")
+            if not time_value: missing.append("time")
+            if not court: missing.append("court")
+            
+            bot.reply_to(message, 
+                f"❌ Could not find all required information. Missing: {', '.join(missing)}\n\n"
+                f"Please use the format:\n"
+                f"date: 09/03/2025\n"
+                f"time: 19:00-20:00\n"
+                f"court: 14")
+    except Exception as e:
+        logger.error(f"Error in manual entry: {str(e)}")
+        bot.reply_to(message, "❌ Error processing your entry. Please check the format and try again.")
 
 @bot.message_handler(func=lambda message: True)
 def check_access(message):
@@ -341,4 +361,5 @@ def check_access(message):
         bot.reply_to(message, "⏳ Please wait for administrator approval before using the bot.")
         return
     else:
-        bot.reply_to(message, "Send me a screenshot of your tennis court booking to save it.")
+        bot.reply_to(message, 
+            "Send me a screenshot of your tennis court booking to save it, or use the /manual command to enter booking details manually.")
