@@ -8,7 +8,8 @@ from db import (
     db, 
     is_user_admin, 
     is_user_approved, 
-    approve_user, 
+    approve_user,
+
     get_users, 
     get_user_bookings, 
     save_booking,
@@ -161,63 +162,77 @@ def list_bookings(message):
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     """Handles received photos and extracts booking information"""
-    if not is_user_approved(str(message.from_user.id)):
+    user_id = str(message.from_user.id)
+    
+    # Log basic information 
+    logger.info(f"Processing photo from user {user_id}")
+    
+    # Check user approval
+    if not is_user_approved(user_id):
         bot.reply_to(message, "⏳ Please wait for administrator approval before using the bot.")
+        logger.info(f"User {user_id} not approved, rejecting photo")
         return
 
     try:
-        # get the file id of the largest photo
-        file_id = message.photo[-1].file_id
-        logger.info(f"received photo with file_id: {file_id}")
+        # Send initial acknowledgment
+        bot.reply_to(message, "🔍 Processing your booking image... Please wait.")
         
-        # download the photo
+        # Get the file id of the largest photo
+        file_id = message.photo[-1].file_id
+        logger.info(f"Received photo with file_id: {file_id}")
+        
+        # Download the photo
         file_info = bot.get_file(file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
-        # save the photo temporarily
+        # Save the photo temporarily
         temp_dir = "/tmp"  # use /tmp for cloud run
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
             
-        temp_file = os.path.join(temp_dir, "temp_image.jpg")
+        temp_file = os.path.join(temp_dir, f"temp_image_{user_id}.jpg")
         with open(temp_file, 'wb') as new_file:
             new_file.write(downloaded_file)
         
-        # process the image
+        logger.info(f"Saved image to {temp_file}, starting OCR processing")
+        
+        # Process the image
         extracted_text = process_image(temp_file)
         
         if extracted_text:
+            logger.info(f"Successfully extracted text from image, length: {len(extracted_text)}")
             date, time, court = extract_booking_info(extracted_text)
             
             if date and time and court:
-                # save to database
-                if save_booking(str(message.from_user.id), date, time, court):
+                logger.info(f"Extracted booking details: date={date}, time={time}, court={court}")
+                # Save to database
+                if save_booking(user_id, date, time, court):
                     response = (f"✅ Booking recorded successfully!\n\n"
                               f"📅 Date: {date}\n"
                               f"🕒 Time: {time}\n"
                               f"🎾 Court: {court}")
-                    bot.reply_to(message, response)
+                    bot.send_message(message.chat.id, response)
                 else:
-                    bot.reply_to(message, "❌ Failed to save booking information.")
+                    bot.send_message(message.chat.id, "❌ Failed to save booking information to database.")
             else:
                 missing = []
                 if not date: missing.append("date")
                 if not time: missing.append("time")
                 if not court: missing.append("court number")
-                bot.reply_to(message, f"❌ Could not find all required information. Missing: {', '.join(missing)}")
-            
-            logger.info(f"extracted booking info - date: {date}, time: {time}, court: {court}")
+                bot.send_message(message.chat.id, f"❌ Could not find all required information in the image. Missing: {', '.join(missing)}")
+                logger.warning(f"Incomplete booking info extracted: date={date}, time={time}, court={court}")
         else:
-            bot.reply_to(message, "Sorry, I couldn't extract any text from this image.")
-            logger.warning("no text could be extracted from the image")
+            bot.send_message(message.chat.id, "Sorry, I couldn't extract any text from this image. Please make sure the booking details are clearly visible.")
+            logger.warning("No text could be extracted from the image")
             
-        # clean up temporary file
+        # Clean up temporary file
         if os.path.exists(temp_file):
             os.remove(temp_file)
+            logger.info(f"Cleaned up temporary file {temp_file}")
         
     except Exception as e:
-        logger.error(f"error handling photo: {str(e)}")
-        bot.reply_to(message, "Sorry, there was an error processing your image. Please try again.")
+        logger.error(f"Error handling photo: {str(e)}", exc_info=True)
+        bot.send_message(message.chat.id, "Sorry, there was an error processing your image. Please try again.")
 
 @bot.message_handler(func=lambda message: True)
 def check_access(message):
