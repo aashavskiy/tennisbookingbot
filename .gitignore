@@ -1,3 +1,4 @@
 .env
 myvenv
 .DS_Store
+bot.log

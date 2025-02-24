@@ -685,3 +685,28 @@ Traceback (most recent call last):
     raise ApiTelegramException(method_name, result, result_json)
 telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 409. Description: Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first
 
+2025-02-24 15:53:42,482 - TeleBot - ERROR - Threaded polling exception: A request to the Telegram API was unsuccessful. Error code: 409. Description: Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first
+2025-02-24 15:53:42,484 - TeleBot - ERROR - Exception traceback:
+Traceback (most recent call last):
+  File "/Users/alexanderashavskiy/projects/Tennis_booking_bot/myvenv/lib/python3.11/site-packages/telebot/__init__.py", line 1234, in __threaded_polling
+    polling_thread.raise_exceptions()
+  File "/Users/alexanderashavskiy/projects/Tennis_booking_bot/myvenv/lib/python3.11/site-packages/telebot/util.py", line 111, in raise_exceptions
+    raise self.exception_info
+  File "/Users/alexanderashavskiy/projects/Tennis_booking_bot/myvenv/lib/python3.11/site-packages/telebot/util.py", line 93, in run
+    task(*args, **kwargs)
+  File "/Users/alexanderashavskiy/projects/Tennis_booking_bot/myvenv/lib/python3.11/site-packages/telebot/__init__.py", line 688, in __retrieve_updates
+    updates = self.get_updates(offset=(self.last_update_id + 1),
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/alexanderashavskiy/projects/Tennis_booking_bot/myvenv/lib/python3.11/site-packages/telebot/__init__.py", line 660, in get_updates
+    json_updates = apihelper.get_updates(
+                   ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/alexanderashavskiy/projects/Tennis_booking_bot/myvenv/lib/python3.11/site-packages/telebot/apihelper.py", line 332, in get_updates
+    return _make_request(token, method_url, params=payload)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/alexanderashavskiy/projects/Tennis_booking_bot/myvenv/lib/python3.11/site-packages/telebot/apihelper.py", line 168, in _make_request
+    json_result = _check_result(method_name, result)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/alexanderashavskiy/projects/Tennis_booking_bot/myvenv/lib/python3.11/site-packages/telebot/apihelper.py", line 195, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 409. Description: Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first
+
