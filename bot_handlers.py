@@ -310,39 +310,59 @@ def save_booking_callback(call):
     """Handles saving the booking"""
     user_id = str(call.from_user.id)
     
+    # Acknowledge the button press immediately
+    bot.answer_callback_query(call.id, "Processing your booking...")
+    
+    logger.info(f"Save booking button pressed by user {user_id}")
+    
     if user_id not in user_bookings:
+        logger.warning(f"No booking details found for user {user_id}")
         bot.answer_callback_query(call.id, "No booking details found")
         return
     
     details = user_bookings[user_id]
+    logger.info(f"Retrieved booking details for user {user_id}: {details}")
     
     # Check if all details are provided
     if not details['date'] or not details['time'] or not details['court']:
+        missing = []
+        if not details['date']: missing.append("date")
+        if not details['time']: missing.append("time")
+        if not details['court']: missing.append("court")
+        
+        logger.warning(f"Incomplete booking details for user {user_id}. Missing: {', '.join(missing)}")
         bot.answer_callback_query(call.id, "Please select all booking details first")
         return
     
     # Save booking to database
-    if save_booking(user_id, details['date'], details['time'], details['court']):
-        # Remove inline keyboard
-        bot.edit_message_reply_markup(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=None
-        )
+    try:
+        logger.info(f"Attempting to save booking for user {user_id} with details: {details}")
         
-        # Send confirmation
-        bot.send_message(
-            call.message.chat.id,
-            f"✅ Booking saved successfully!\n\n"
-            f"📅 Date: {details['date']}\n"
-            f"🕒 Time: {details['time']}\n"
-            f"🎾 Court: {details['court']}"
-        )
+        success = save_booking(user_id, details['date'], details['time'], details['court'])
         
-        # Clear temporary data
-        del user_bookings[user_id]
-    else:
-        bot.answer_callback_query(call.id, "Failed to save booking")
+        if success:
+            logger.info(f"Successfully saved booking for user {user_id}")
+            
+            # Update the message text
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=f"✅ Booking saved successfully!\n\n"
+                     f"📅 Date: {details['date']}\n"
+                     f"🕒 Time: {details['time']}\n"
+                     f"🎾 Court: {details['court']}"
+            )
+            
+            # Clear temporary data
+            del user_bookings[user_id]
+        else:
+            logger.error(f"Database operation failed when saving booking for user {user_id}")
+            bot.answer_callback_query(call.id, "Failed to save booking to database")
+            bot.send_message(call.message.chat.id, "❌ Failed to save booking to database. Please try again.")
+    except Exception as e:
+        logger.error(f"Error saving booking for user {user_id}: {str(e)}")
+        bot.answer_callback_query(call.id, "An error occurred while processing your booking")
+        bot.send_message(call.message.chat.id, "❌ An error occurred while processing your booking. Please try again.")
 
 @bot.message_handler(func=lambda message: 
                     message.text and 
