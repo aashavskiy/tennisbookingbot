@@ -4,6 +4,7 @@
 import os
 import telebot
 import re
+import json
 from config import TOKEN, ADMIN_ID, logger
 from db import (
     db, 
@@ -21,12 +22,58 @@ from sqlalchemy import text
 # Initialize bot with specific configurations to prevent duplicate processing
 bot = telebot.TeleBot(TOKEN, threaded=True, skip_pending=True)
 
-# Storage for booking details
-user_bookings = {}
-
 # Track processed message IDs to prevent duplicate handling
 processed_messages = set()
 MAX_PROCESSED_MESSAGES = 1000  # Limit to prevent memory growth
+
+# Directory for storing temporary booking data
+TEMP_DIR = "/tmp" if os.path.exists("/tmp") else "."
+
+# Function to store booking data in a file
+def save_booking_data(user_id, details):
+    """Saves booking details to a temporary file"""
+    try:
+        if not os.path.exists(TEMP_DIR):
+            os.makedirs(TEMP_DIR)
+            
+        file_path = os.path.join(TEMP_DIR, f"booking_{user_id}.json")
+        with open(file_path, 'w') as f:
+            json.dump(details, f)
+        logger.info(f"Saved booking details to file for user {user_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving booking details to file: {str(e)}")
+        return False
+
+# Function to load booking data from a file
+def load_booking_data(user_id):
+    """Loads booking details from a temporary file"""
+    try:
+        file_path = os.path.join(TEMP_DIR, f"booking_{user_id}.json")
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                details = json.load(f)
+            logger.info(f"Loaded booking details from file for user {user_id}")
+            return details
+        else:
+            logger.warning(f"No booking file found for user {user_id}")
+            return None
+    except Exception as e:
+        logger.error(f"Error loading booking details from file: {str(e)}")
+        return None
+
+# Function to delete booking data file
+def delete_booking_data(user_id):
+    """Deletes the temporary booking data file"""
+    try:
+        file_path = os.path.join(TEMP_DIR, f"booking_{user_id}.json")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info(f"Deleted booking file for user {user_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting booking file: {str(e)}")
+        return False
 
 @bot.message_handler(commands=['admin'])
 def check_admin(message):
@@ -97,7 +144,7 @@ def handle_start(message):
             # Approved user
             bot.reply_to(message, "✅ Welcome back! You can use the bot's features.")
     except Exception as e:
-        logger.error(f"error handling start command: {str(e)}")
+        logger.error(f"Error handling start command: {str(e)}")
         bot.reply_to(message, "Sorry, there was an error processing your request. Please try again later.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('approve_'))
@@ -237,25 +284,25 @@ def handle_photo(message):
         # Date selection button
         date_button = telebot.types.InlineKeyboardButton(
             text="📅 March 9, 2025", 
-            callback_data="date_09/03/2025"
+            callback_data=f"date_{user_id}_09/03/2025"
         )
         
         # Time selection button
         time_button = telebot.types.InlineKeyboardButton(
             text="🕗 19:00-20:00",
-            callback_data="time_19:00-20:00"
+            callback_data=f"time_{user_id}_19:00-20:00"
         )
         
         # Court selection button
         court_button = telebot.types.InlineKeyboardButton(
             text="🎾 Court 14",
-            callback_data="court_14"
+            callback_data=f"court_{user_id}_14"
         )
         
         # Save button
         save_button = telebot.types.InlineKeyboardButton(
             text="💾 Save Booking",
-            callback_data="save_booking"
+            callback_data=f"save_{user_id}"
         )
         
         # Add buttons to markup
@@ -264,9 +311,16 @@ def handle_photo(message):
         markup.row(court_button)
         markup.row(save_button)
         
+        # Initialize booking with default values
+        details = {'date': "09/03/2025", 'time': "19:00-20:00", 'court': "14"}
+        save_booking_data(user_id, details)
+        
         # Send message with inline keyboard
         bot.reply_to(message, 
-            "Please confirm your booking details:",
+            "Please confirm your booking details:\n\n"
+            f"📅 Date: {details['date']}\n"
+            f"🕒 Time: {details['time']}\n"
+            f"🎾 Court: {details['court']}",
             reply_markup=markup)
             
     except Exception as e:
@@ -276,23 +330,35 @@ def handle_photo(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith(('date_', 'time_', 'court_')))
 def handle_booking_selection(call):
     """Handles selection of booking details"""
-    user_id = str(call.from_user.id)
-    
-    # Initialize user's booking details if not exists
-    if user_id not in user_bookings:
-        user_bookings[user_id] = {'date': None, 'time': None, 'court': None}
-    
     # Parse the selection
-    data_type, value = call.data.split('_', 1)
+    parts = call.data.split('_', 2)
+    if len(parts) < 3:
+        bot.answer_callback_query(call.id, "Invalid selection data")
+        return
+        
+    data_type, user_id, value = parts
+    caller_id = str(call.from_user.id)
+    
+    # Verify the caller is the booking owner
+    if caller_id != user_id:
+        bot.answer_callback_query(call.id, "This is not your booking")
+        return
+    
+    # Load current booking details
+    details = load_booking_data(user_id)
+    if not details:
+        details = {'date': None, 'time': None, 'court': None}
     
     # Update booking details
-    user_bookings[user_id][data_type] = value
+    details[data_type] = value
+    
+    # Save updated details
+    save_booking_data(user_id, details)
     
     # Acknowledge the selection
     bot.answer_callback_query(call.id, f"{data_type.capitalize()} selected: {value}")
     
     # Update message with current selections
-    details = user_bookings[user_id]
     message_text = "Please confirm your booking details:\n\n"
     message_text += f"📅 Date: {details['date'] or 'Not selected'}\n"
     message_text += f"🕒 Time: {details['time'] or 'Not selected'}\n"
@@ -305,22 +371,36 @@ def handle_booking_selection(call):
         reply_markup=call.message.reply_markup
     )
 
-@bot.callback_query_handler(func=lambda call: call.data == "save_booking")
+@bot.callback_query_handler(func=lambda call: call.data.startswith('save_'))
 def save_booking_callback(call):
     """Handles saving the booking"""
-    user_id = str(call.from_user.id)
+    # Parse the user ID
+    parts = call.data.split('_', 1)
+    if len(parts) < 2:
+        bot.answer_callback_query(call.id, "Invalid save data")
+        return
+        
+    user_id = parts[1]
+    caller_id = str(call.from_user.id)
+    
+    # Verify the caller is the booking owner
+    if caller_id != user_id:
+        bot.answer_callback_query(call.id, "This is not your booking")
+        return
     
     # Acknowledge the button press immediately
     bot.answer_callback_query(call.id, "Processing your booking...")
     
     logger.info(f"Save booking button pressed by user {user_id}")
     
-    if user_id not in user_bookings:
+    # Load booking details from file
+    details = load_booking_data(user_id)
+    
+    if not details:
         logger.warning(f"No booking details found for user {user_id}")
-        bot.answer_callback_query(call.id, "No booking details found")
+        bot.send_message(call.message.chat.id, "❌ No booking details found. Please try again.")
         return
     
-    details = user_bookings[user_id]
     logger.info(f"Retrieved booking details for user {user_id}: {details}")
     
     # Check if all details are provided
@@ -331,7 +411,7 @@ def save_booking_callback(call):
         if not details['court']: missing.append("court")
         
         logger.warning(f"Incomplete booking details for user {user_id}. Missing: {', '.join(missing)}")
-        bot.answer_callback_query(call.id, "Please select all booking details first")
+        bot.send_message(call.message.chat.id, f"❌ Incomplete booking details. Missing: {', '.join(missing)}")
         return
     
     # Save booking to database
@@ -353,15 +433,13 @@ def save_booking_callback(call):
                      f"🎾 Court: {details['court']}"
             )
             
-            # Clear temporary data
-            del user_bookings[user_id]
+            # Clean up temporary data
+            delete_booking_data(user_id)
         else:
             logger.error(f"Database operation failed when saving booking for user {user_id}")
-            bot.answer_callback_query(call.id, "Failed to save booking to database")
             bot.send_message(call.message.chat.id, "❌ Failed to save booking to database. Please try again.")
     except Exception as e:
         logger.error(f"Error saving booking for user {user_id}: {str(e)}")
-        bot.answer_callback_query(call.id, "An error occurred while processing your booking")
         bot.send_message(call.message.chat.id, "❌ An error occurred while processing your booking. Please try again.")
 
 @bot.message_handler(func=lambda message: 
